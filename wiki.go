@@ -86,6 +86,7 @@ func (w *Wiki) EditorHTML(content string) (template.HTML, error) {
 		EnableImageUpload: w.uploadEndpoint != "",
 		TextareaName:     "content",
 		InitialContent:   content,
+		DrawBasePath:     w.rendererOpts.DrawBasePath,
 	}
 	return editor.RenderEditor(cfg)
 }

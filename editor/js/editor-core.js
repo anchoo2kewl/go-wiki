@@ -112,6 +112,25 @@
         var url = prompt('Enter URL:');
         var text = prompt('Enter link text:');
         if (url && text) insertAtCursor(editor, '[' + text + '](' + url + ')');
+      },
+      'gw-draw':        function() {
+        var drawBase = cfg.drawBasePath;
+        if (!drawBase) return;
+        var btn = document.getElementById('gw-draw');
+        if (btn) btn.disabled = true;
+        fetch(drawBase + '/api/new', { method: 'POST' })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data && data.id) {
+              insertAtCursor(editor, '\n[draw:' + data.id + ':edit]\n');
+            }
+          })
+          .catch(function(err) {
+            alert('Failed to create drawing: ' + err.message);
+          })
+          .finally(function() {
+            if (btn) btn.disabled = false;
+          });
       }
     };
 

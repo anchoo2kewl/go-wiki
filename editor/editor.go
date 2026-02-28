@@ -16,6 +16,7 @@ type EditorConfig struct {
 	InitialContent   string // pre-filled content for the textarea
 	ExtraCSS         string // additional CSS to inject
 	ExtraJS          string // additional JS to inject
+	DrawBasePath     string // optional: if set, a "Draw" button is shown (e.g. "/draw")
 }
 
 // DefaultEditorConfig returns a config with sensible defaults.
@@ -36,6 +37,7 @@ type templateData struct {
 	EnableFullscreen bool
 	EnableUpload     bool
 	PreviewEndpoint  string
+	DrawBasePath     string
 }
 
 // RenderEditor returns the complete editor HTML fragment — toolbar, textarea,
@@ -52,6 +54,7 @@ func RenderEditor(cfg EditorConfig) (template.HTML, error) {
 		EnableFullscreen: cfg.EnableFullscreen,
 		EnableUpload:     cfg.EnableImageUpload && cfg.UploadEndpoint != "",
 		PreviewEndpoint:  cfg.PreviewEndpoint,
+		DrawBasePath:     cfg.DrawBasePath,
 	}
 
 	// Parse embedded templates
@@ -86,6 +89,9 @@ func RenderEditor(cfg EditorConfig) (template.HTML, error) {
 	buf.WriteString(`, previewId: "gw-preview-content"`)
 	if cfg.UploadEndpoint != "" {
 		buf.WriteString(`, uploadEndpoint: "` + template.JSEscapeString(cfg.UploadEndpoint) + `"`)
+	}
+	if cfg.DrawBasePath != "" {
+		buf.WriteString(`, drawBasePath: "` + template.JSEscapeString(cfg.DrawBasePath) + `"`)
 	}
 	buf.WriteString(`};</script>`)
 	buf.WriteString("\n")
