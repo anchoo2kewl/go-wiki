@@ -7,6 +7,7 @@
 
   var fsOverlay, fsTextarea, fsPreview, fsStatus, fsTitleEl, fsFullCheck, fsExitBtn, fsBtn, fsDivider, mainEditor;
   var fsActive = false;
+  var fsUndoMgr = null;
   var renderTimer = null;
   var renderAbort = null;
   var DEBOUNCE_MS = 350;
@@ -24,6 +25,11 @@
     mainEditor  = document.getElementById(cfg.textareaId || 'gw-editor');
 
     if (!fsOverlay || !fsTextarea || !mainEditor) return;
+
+    // Undo/redo for the fullscreen textarea
+    if (gw.createUndoManager) {
+      fsUndoMgr = gw.createUndoManager(fsTextarea, 10);
+    }
 
     fsBtn && fsBtn.addEventListener('click', enterFullscreen);
     fsExitBtn && fsExitBtn.addEventListener('click', exitFullscreen);
@@ -85,7 +91,9 @@
   }
 
   function enterFullscreen() {
+    if (mainEditor._undoMgr) mainEditor._undoMgr.checkpoint();
     fsTextarea.value = mainEditor.value;
+    if (fsUndoMgr) fsUndoMgr.reset();
     if (fsTitleEl) {
       var titleInput = document.querySelector('input[name="title"]');
       fsTitleEl.textContent = (titleInput && titleInput.value) ? titleInput.value : 'Editing';

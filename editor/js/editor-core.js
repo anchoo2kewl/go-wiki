@@ -1,4 +1,4 @@
-// go-wiki editor core — toolbar handlers, preview, helpers
+// go-wiki editor core — toolbar handlers, preview, undo/redo, helpers
 // All configuration comes from window.__goWikiConfig
 (function() {
   'use strict';
@@ -11,9 +11,90 @@
     return document.getElementById(textareaId);
   }
 
+  // ---------------------------------------------------------------------------
+  // Undo / Redo manager — keeps up to maxSize snapshots per textarea.
+  // Attach with createUndoManager(textarea, 10). The manager is stored on the
+  // element as textarea._undoMgr so insertAtCursor/wrapSelection can
+  // automatically checkpoint before mutating the value.
+  // ---------------------------------------------------------------------------
+  function createUndoManager(textarea, maxSize) {
+    maxSize = maxSize || 10;
+    var undoStack = [];
+    var redoStack = [];
+    var inputTimer = null;
+
+    function snap() {
+      return { v: textarea.value, s: textarea.selectionStart, e: textarea.selectionEnd };
+    }
+    function apply(st) {
+      textarea.value = st.v;
+      textarea.selectionStart = st.s;
+      textarea.selectionEnd = st.e;
+      textarea.focus();
+    }
+    function push(stack, st) {
+      if (stack.length && stack[stack.length - 1].v === st.v) return;
+      stack.push(st);
+      if (stack.length > maxSize) stack.shift();
+    }
+
+    // Save current state before a programmatic change.
+    function checkpoint() {
+      if (inputTimer) { clearTimeout(inputTimer); inputTimer = null; }
+      push(undoStack, snap());
+      redoStack.length = 0;
+    }
+    function undo() {
+      if (undoStack.length === 0) return false;
+      if (inputTimer) { clearTimeout(inputTimer); inputTimer = null; }
+      push(redoStack, snap());
+      apply(undoStack.pop());
+      return true;
+    }
+    function redo() {
+      if (redoStack.length === 0) return false;
+      push(undoStack, snap());
+      apply(redoStack.pop());
+      return true;
+    }
+    function reset() {
+      undoStack.length = 0;
+      redoStack.length = 0;
+      if (inputTimer) { clearTimeout(inputTimer); inputTimer = null; }
+    }
+
+    // Debounced typing → automatic checkpoint after 800 ms of silence.
+    textarea.addEventListener('input', function() {
+      if (inputTimer) clearTimeout(inputTimer);
+      inputTimer = setTimeout(function() {
+        push(undoStack, snap());
+        redoStack.length = 0;
+        inputTimer = null;
+      }, 800);
+    });
+
+    // Keyboard: Cmd/Ctrl+Z = undo, Cmd/Ctrl+Shift+Z = redo, Ctrl+Y = redo
+    textarea.addEventListener('keydown', function(e) {
+      var isMod = e.metaKey || e.ctrlKey;
+      if (isMod && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+      }
+      if (e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    });
+
+    var mgr = { checkpoint: checkpoint, undo: undo, redo: redo, reset: reset };
+    textarea._undoMgr = mgr;
+    return mgr;
+  }
+
   // Insert text at the current cursor position in a textarea
   function insertAtCursor(textarea, text) {
     if (!textarea) return;
+    if (textarea._undoMgr) textarea._undoMgr.checkpoint();
     var start = textarea.selectionStart;
     var end = textarea.selectionEnd;
     var value = textarea.value;
@@ -25,6 +106,7 @@
   // Wrap the selected text with before/after strings
   function wrapSelection(textarea, before, after) {
     if (!textarea) return;
+    if (textarea._undoMgr) textarea._undoMgr.checkpoint();
     var start = textarea.selectionStart;
     var end = textarea.selectionEnd;
     var selectedText = textarea.value.substring(start, end);
@@ -97,8 +179,13 @@
     var editor = getEditor();
     if (!editor || editor.tagName !== 'TEXTAREA') return;
 
+    // Undo/redo for the main editor textarea
+    var undoMgr = createUndoManager(editor, 10);
+
     // Toolbar button handlers
     var actions = {
+      'gw-undo':        function() { undoMgr.undo(); },
+      'gw-redo':        function() { undoMgr.redo(); },
       'gw-bold':        function() { wrapSelection(editor, '**', '**'); },
       'gw-italic':      function() { wrapSelection(editor, '_', '_'); },
       'gw-h2':          function() { insertAtCursor(editor, '\n## '); },
@@ -181,6 +268,7 @@
     convertFences: convertFences,
     cutAtMore: cutAtMore,
     removeMore: removeMore,
-    renderPreview: renderPreview
+    renderPreview: renderPreview,
+    createUndoManager: createUndoManager
   };
 })();
