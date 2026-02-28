@@ -7,16 +7,18 @@ import (
 
 // EditorConfig controls what the rendered editor includes.
 type EditorConfig struct {
-	PreviewEndpoint  string // required: URL for live preview POST (e.g. "/wiki/preview")
-	UploadEndpoint   string // optional: if empty, upload buttons are hidden
-	EnableFullscreen bool   // default: true
-	EnableImageUpload bool  // default: false
-	DarkMode         bool   // default: true (consumer controls via CSS class on <body>)
-	TextareaName     string // form field name, default: "content"
-	InitialContent   string // pre-filled content for the textarea
-	ExtraCSS         string // additional CSS to inject
-	ExtraJS          string // additional JS to inject
-	DrawBasePath     string // optional: if set, a "Draw" button is shown (e.g. "/draw")
+	PreviewEndpoint   string // required: URL for live preview POST (e.g. "/wiki/preview")
+	UploadEndpoint    string // optional: if empty, upload buttons are hidden
+	ImageListEndpoint string // optional: if set, an "Images" browser button is shown
+	EnableFullscreen  bool   // default: true
+	EnableImageUpload bool   // default: false
+	EnableMore        bool   // default: false; if true, a "More" button inserts <more-->
+	DarkMode          bool   // default: true (consumer controls via CSS class on <body>)
+	TextareaName      string // form field name, default: "content"
+	InitialContent    string // pre-filled content for the textarea
+	ExtraCSS          string // additional CSS to inject
+	ExtraJS           string // additional JS to inject
+	DrawBasePath      string // optional: if set, a "Draw" button is shown (e.g. "/draw")
 }
 
 // DefaultEditorConfig returns a config with sensible defaults.
@@ -31,13 +33,16 @@ func DefaultEditorConfig(previewEndpoint string) EditorConfig {
 
 // templateData is the data passed to Go templates.
 type templateData struct {
-	TextareaID       string
-	TextareaName     string
-	InitialContent   string
-	EnableFullscreen bool
-	EnableUpload     bool
-	PreviewEndpoint  string
-	DrawBasePath     string
+	TextareaID        string
+	TextareaName      string
+	InitialContent    string
+	EnableFullscreen  bool
+	EnableUpload      bool
+	PreviewEndpoint   string
+	UploadEndpoint    string
+	ImageListEndpoint string
+	DrawBasePath      string
+	EnableMore        bool
 }
 
 // RenderEditor returns the complete editor HTML fragment — toolbar, textarea,
@@ -48,13 +53,16 @@ func RenderEditor(cfg EditorConfig) (template.HTML, error) {
 	}
 
 	data := templateData{
-		TextareaID:       "gw-editor",
-		TextareaName:     cfg.TextareaName,
-		InitialContent:   cfg.InitialContent,
-		EnableFullscreen: cfg.EnableFullscreen,
-		EnableUpload:     cfg.EnableImageUpload && cfg.UploadEndpoint != "",
-		PreviewEndpoint:  cfg.PreviewEndpoint,
-		DrawBasePath:     cfg.DrawBasePath,
+		TextareaID:        "gw-editor",
+		TextareaName:      cfg.TextareaName,
+		InitialContent:    cfg.InitialContent,
+		EnableFullscreen:  cfg.EnableFullscreen,
+		EnableUpload:      cfg.EnableImageUpload && cfg.UploadEndpoint != "",
+		PreviewEndpoint:   cfg.PreviewEndpoint,
+		UploadEndpoint:    cfg.UploadEndpoint,
+		ImageListEndpoint: cfg.ImageListEndpoint,
+		DrawBasePath:      cfg.DrawBasePath,
+		EnableMore:        cfg.EnableMore,
 	}
 
 	// Parse embedded templates
@@ -90,8 +98,14 @@ func RenderEditor(cfg EditorConfig) (template.HTML, error) {
 	if cfg.UploadEndpoint != "" {
 		buf.WriteString(`, uploadEndpoint: "` + template.JSEscapeString(cfg.UploadEndpoint) + `"`)
 	}
+	if cfg.ImageListEndpoint != "" {
+		buf.WriteString(`, imageListEndpoint: "` + template.JSEscapeString(cfg.ImageListEndpoint) + `"`)
+	}
 	if cfg.DrawBasePath != "" {
 		buf.WriteString(`, drawBasePath: "` + template.JSEscapeString(cfg.DrawBasePath) + `"`)
+	}
+	if cfg.EnableMore {
+		buf.WriteString(`, enableMore: true`)
 	}
 	buf.WriteString(`};</script>`)
 	buf.WriteString("\n")

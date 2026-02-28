@@ -25,12 +25,14 @@ import (
 type Wiki struct {
 	Renderer *render.Renderer
 
-	rendererOpts    render.RendererOptions
-	classConfig     render.ClassConfig
-	hasCustomClasses bool
-	previewEndpoint string
-	uploadEndpoint  string
-	fullscreen      bool
+	rendererOpts      render.RendererOptions
+	classConfig       render.ClassConfig
+	hasCustomClasses  bool
+	previewEndpoint   string
+	uploadEndpoint    string
+	imageListEndpoint string
+	enableMore        bool
+	fullscreen        bool
 }
 
 // New creates a Wiki with the given options. Defaults: all rendering features
@@ -80,13 +82,15 @@ func (w *Wiki) AssetHandler() http.Handler {
 // textarea, fullscreen overlay, inline CSS/JS — ready to embed in a page.
 func (w *Wiki) EditorHTML(content string) (template.HTML, error) {
 	cfg := editor.EditorConfig{
-		PreviewEndpoint:  w.previewEndpoint,
-		UploadEndpoint:   w.uploadEndpoint,
-		EnableFullscreen: w.fullscreen,
+		PreviewEndpoint:   w.previewEndpoint,
+		UploadEndpoint:    w.uploadEndpoint,
+		ImageListEndpoint: w.imageListEndpoint,
+		EnableFullscreen:  w.fullscreen,
 		EnableImageUpload: w.uploadEndpoint != "",
-		TextareaName:     "content",
-		InitialContent:   content,
-		DrawBasePath:     w.rendererOpts.DrawBasePath,
+		EnableMore:        w.enableMore,
+		TextareaName:      "content",
+		InitialContent:    content,
+		DrawBasePath:      w.rendererOpts.DrawBasePath,
 	}
 	return editor.RenderEditor(cfg)
 }

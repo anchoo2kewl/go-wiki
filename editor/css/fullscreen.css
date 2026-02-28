@@ -48,10 +48,56 @@
 .gw-fullscreen-title svg { stroke: #6366f1; flex-shrink: 0; }
 .dark .gw-fullscreen-title svg { stroke: #818cf8; }
 
+/* Fullscreen toolbar */
+.gw-fullscreen-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  justify-content: center;
+  overflow-x: auto;
+}
+.gw-fs-btn {
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: #475569;
+  white-space: nowrap;
+}
+.gw-fs-btn:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+.dark .gw-fs-btn { color: #94a3b8; }
+.dark .gw-fs-btn:hover { background: #334155; color: #e2e8f0; }
+.gw-fs-sep {
+  width: 1px;
+  height: 16px;
+  background: #e2e8f0;
+  margin: 0 2px;
+}
+.dark .gw-fs-sep { background: #475569; }
+
+/* Fullscreen textarea wrap for drop overlay */
+.gw-fullscreen-textarea-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.gw-fullscreen-textarea-wrap .gw-fullscreen-textarea {
+  flex: 1;
+}
+
 .gw-fullscreen-controls {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-shrink: 0;
 }
 .gw-fullscreen-opt {
   display: flex;

@@ -41,6 +41,23 @@ func WithFullscreen(enabled bool) Option {
 	}
 }
 
+// WithImageListEndpoint sets the URL for the image list/browse API.
+// When set, an "Images" button appears in the toolbar that opens a modal
+// browser showing uploaded images.
+func WithImageListEndpoint(endpoint string) Option {
+	return func(w *Wiki) {
+		w.imageListEndpoint = endpoint
+	}
+}
+
+// WithEnableMore adds a "More" button to the toolbar that inserts
+// a <more--> marker, commonly used to separate post excerpts.
+func WithEnableMore(enabled bool) Option {
+	return func(w *Wiki) {
+		w.enableMore = enabled
+	}
+}
+
 // WithDrawBasePath enables go-draw embed support and sets the URL prefix
 // for go-draw routes (e.g. "/draw"). When set, [draw:id] and [draw:id:edit]
 // shortcodes in markdown are rendered as resizable go-draw iframe embeds.

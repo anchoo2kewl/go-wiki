@@ -174,6 +174,140 @@
     if (window.Prism) Prism.highlightAllUnder(container);
   }
 
+  // ---------------------------------------------------------------------------
+  // Image drag-and-drop upload
+  // ---------------------------------------------------------------------------
+  function setupDragDrop(textarea) {
+    var uploadEndpoint = cfg.uploadEndpoint;
+    if (!uploadEndpoint) return;
+
+    var wrap = textarea.closest('.gw-editor-textarea-wrap') || textarea.parentElement;
+    var overlay = wrap && wrap.querySelector('.gw-drop-overlay');
+    var dragCounter = 0;
+
+    wrap.addEventListener('dragenter', function(e) {
+      e.preventDefault();
+      dragCounter++;
+      if (e.dataTransfer && e.dataTransfer.types.indexOf('Files') !== -1) {
+        if (overlay) overlay.classList.remove('gw-hidden');
+      }
+    });
+    wrap.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    });
+    wrap.addEventListener('dragleave', function(e) {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        if (overlay) overlay.classList.add('gw-hidden');
+      }
+    });
+    wrap.addEventListener('drop', function(e) {
+      e.preventDefault();
+      dragCounter = 0;
+      if (overlay) overlay.classList.add('gw-hidden');
+
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+
+      for (var i = 0; i < files.length; i++) {
+        (function(file) {
+          if (!file.type.startsWith('image/')) return;
+          var fd = new FormData();
+          fd.append('file', file);
+          fetch(uploadEndpoint, { method: 'POST', body: fd })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+              if (data && data.url) {
+                var name = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+                insertAtCursor(textarea, '![' + name + '](' + data.url + ')\n');
+              }
+            })
+            .catch(function(err) {
+              console.error('Image upload failed:', err);
+            });
+        })(files[i]);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Image browser modal
+  // ---------------------------------------------------------------------------
+  function setupImageBrowser(editor) {
+    var listEndpoint = cfg.imageListEndpoint;
+    if (!listEndpoint) return;
+
+    var modal = document.getElementById('gw-image-modal');
+    var grid = document.getElementById('gw-image-grid');
+    var closeBtn = document.getElementById('gw-image-modal-close');
+    var backdrop = modal && modal.querySelector('.gw-modal-backdrop');
+    if (!modal || !grid) return;
+
+    function closeModal() {
+      modal.classList.add('gw-hidden');
+    }
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (backdrop) backdrop.addEventListener('click', closeModal);
+
+    function openModal() {
+      modal.classList.remove('gw-hidden');
+      grid.innerHTML = '<div class="gw-img-loading">Loading images...</div>';
+
+      fetch(listEndpoint)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var images = data.images || [];
+          if (images.length === 0) {
+            grid.innerHTML = '<div class="gw-img-empty">No images uploaded yet</div>';
+            return;
+          }
+          grid.innerHTML = '';
+          images.forEach(function(img) {
+            var card = document.createElement('div');
+            card.className = 'gw-img-card';
+            card.innerHTML = '<img src="' + img.url + '" alt="' + (img.filename || '') + '" loading="lazy"/>' +
+              '<span class="gw-img-name">' + (img.filename || '') + '</span>' +
+              '<button type="button" class="gw-img-delete" title="Delete image">&times;</button>';
+
+            // Click card → insert into editor
+            card.addEventListener('click', function(e) {
+              if (e.target.classList.contains('gw-img-delete')) return;
+              var name = (img.filename || '').replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+              insertAtCursor(editor, '![' + name + '](' + img.url + ')\n');
+              closeModal();
+            });
+
+            // Delete button
+            var delBtn = card.querySelector('.gw-img-delete');
+            if (delBtn) {
+              delBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (!confirm('Delete this image?')) return;
+                fetch(listEndpoint.replace('/list', '') + '?path=' + encodeURIComponent(img.url), { method: 'DELETE' })
+                  .then(function(res) {
+                    if (res.ok) {
+                      card.remove();
+                    } else {
+                      alert('Failed to delete image');
+                    }
+                  })
+                  .catch(function() { alert('Failed to delete image'); });
+              });
+            }
+            grid.appendChild(card);
+          });
+        })
+        .catch(function() {
+          grid.innerHTML = '<div class="gw-img-empty">Failed to load images</div>';
+        });
+    }
+
+    return openModal;
+  }
+
   // Bind toolbar buttons on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', function() {
     var editor = getEditor();
@@ -181,6 +315,12 @@
 
     // Undo/redo for the main editor textarea
     var undoMgr = createUndoManager(editor, 10);
+
+    // Set up drag-and-drop image upload
+    setupDragDrop(editor);
+
+    // Set up image browser
+    var openImageBrowser = setupImageBrowser(editor);
 
     // Toolbar button handlers
     var actions = {
@@ -199,6 +339,12 @@
         var url = prompt('Enter URL:');
         var text = prompt('Enter link text:');
         if (url && text) insertAtCursor(editor, '[' + text + '](' + url + ')');
+      },
+      'gw-images':      function() {
+        if (openImageBrowser) openImageBrowser();
+      },
+      'gw-more':        function() {
+        insertAtCursor(editor, '\n<more-->\n');
       },
       'gw-draw':        function() {
         var drawBase = cfg.drawBasePath;
@@ -230,14 +376,14 @@
     var tabEdit = document.getElementById('gw-tab-edit');
     var tabPrev = document.getElementById('gw-tab-preview');
     var previewFull = document.getElementById('gw-preview-full');
-    var editorEl = editor;
+    var editorWrap = document.getElementById('gw-editor-textarea-wrap') || editor;
     var previewEl = document.getElementById('gw-preview');
 
     if (tabEdit) {
       tabEdit.addEventListener('click', function() {
         tabEdit.classList.add('active');
         if (tabPrev) tabPrev.classList.remove('active');
-        editorEl.classList.remove('gw-hidden');
+        editorWrap.classList.remove('gw-hidden');
         if (previewEl) previewEl.classList.add('gw-hidden');
       });
     }
@@ -246,7 +392,7 @@
       tabPrev.addEventListener('click', function() {
         tabPrev.classList.add('active');
         if (tabEdit) tabEdit.classList.remove('active');
-        editorEl.classList.add('gw-hidden');
+        editorWrap.classList.add('gw-hidden');
         if (previewEl) previewEl.classList.remove('gw-hidden');
         renderPreview(editor.value, previewFull && previewFull.checked);
       });
@@ -269,6 +415,7 @@
     cutAtMore: cutAtMore,
     removeMore: removeMore,
     renderPreview: renderPreview,
-    createUndoManager: createUndoManager
+    createUndoManager: createUndoManager,
+    setupDragDrop: setupDragDrop
   };
 })();

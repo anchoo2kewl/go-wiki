@@ -31,6 +31,11 @@
       fsUndoMgr = gw.createUndoManager(fsTextarea, 10);
     }
 
+    // Set up drag-and-drop for fullscreen textarea
+    if (gw.setupDragDrop) {
+      gw.setupDragDrop(fsTextarea);
+    }
+
     fsBtn && fsBtn.addEventListener('click', enterFullscreen);
     fsExitBtn && fsExitBtn.addEventListener('click', exitFullscreen);
 
@@ -56,6 +61,15 @@
         if (fsActive) scheduleRender();
       });
     }
+
+    // Fullscreen toolbar buttons
+    var fsToolbarBtns = fsOverlay.querySelectorAll('[data-fs]');
+    fsToolbarBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var cmd = btn.getAttribute('data-fs');
+        handleFsToolbar(cmd);
+      });
+    });
 
     // Resizable divider
     if (fsDivider) {
@@ -88,6 +102,49 @@
         document.body.style.userSelect = '';
       });
     }
+  }
+
+  function handleFsToolbar(cmd) {
+    if (!fsTextarea) return;
+    switch (cmd) {
+      case 'bold':    gw.wrapSelection(fsTextarea, '**', '**'); break;
+      case 'italic':  gw.wrapSelection(fsTextarea, '_', '_'); break;
+      case 'h2':      gw.insertAtCursor(fsTextarea, '\n## '); break;
+      case 'h3':      gw.insertAtCursor(fsTextarea, '\n### '); break;
+      case 'ul':      gw.insertAtCursor(fsTextarea, '\n- '); break;
+      case 'ol':      gw.insertAtCursor(fsTextarea, '\n1. '); break;
+      case 'quote':   gw.insertAtCursor(fsTextarea, '\n> '); break;
+      case 'hr':      gw.insertAtCursor(fsTextarea, '\n---\n'); break;
+      case 'code':    gw.wrapSelection(fsTextarea, '`', '`'); break;
+      case 'link':
+        var url = prompt('Enter URL:');
+        var text = prompt('Enter link text:');
+        if (url && text) gw.insertAtCursor(fsTextarea, '[' + text + '](' + url + ')');
+        break;
+      case 'images':
+        // Open the image modal from the main editor setup
+        var imgBtn = document.getElementById('gw-images');
+        if (imgBtn) imgBtn.click();
+        break;
+      case 'more':
+        gw.insertAtCursor(fsTextarea, '\n<more-->\n');
+        break;
+      case 'draw':
+        var drawBase = cfg.drawBasePath;
+        if (!drawBase) return;
+        fetch(drawBase + '/api/new', { method: 'POST' })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data && data.id) {
+              gw.insertAtCursor(fsTextarea, '\n[draw:' + data.id + ':edit]\n');
+            }
+          })
+          .catch(function(err) { alert('Failed to create drawing: ' + err.message); });
+        break;
+    }
+    // Sync to main editor
+    mainEditor.value = fsTextarea.value;
+    scheduleRender();
   }
 
   function enterFullscreen() {
