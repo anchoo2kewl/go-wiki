@@ -40,3 +40,13 @@ func WithFullscreen(enabled bool) Option {
 		w.fullscreen = enabled
 	}
 }
+
+// WithDrawBasePath enables go-draw embed support and sets the URL prefix
+// for go-draw routes (e.g. "/draw"). When set, [draw:id] and [draw:id:edit]
+// shortcodes in markdown are rendered as resizable go-draw iframe embeds.
+func WithDrawBasePath(basePath string) Option {
+	return func(w *Wiki) {
+		w.rendererOpts.EnableDrawEmbeds = true
+		w.rendererOpts.DrawBasePath = basePath
+	}
+}

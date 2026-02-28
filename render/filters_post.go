@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// drawShortcodeRe matches [draw:id] or [draw:id:edit] shortcodes.
+// Captures: (1) drawing ID, (2) optional ":edit" suffix.
+var drawShortcodeRe = regexp.MustCompile(`(?i)\[draw:([a-z0-9][a-z0-9\-]{0,62})(?::(edit))?\]`)
+
 // Pre-compiled regexes (compiled once at startup)
 var (
 	listULRe = regexp.MustCompile(`(?i)<ul\b([^>]*)>`)
@@ -130,6 +134,31 @@ func convertInlineEmphasisInHTML(html string) string {
 		html = strings.ReplaceAll(html, placeholder("EMPH", i), m)
 	}
 	return html
+}
+
+// embedDraw replaces [draw:id] and [draw:id:edit] shortcodes with go-draw
+// resizable iframe embeds. basePath is the go-draw URL prefix (e.g. "/draw").
+func embedDraw(html string, basePath string) string {
+	return drawShortcodeRe.ReplaceAllStringFunc(html, func(m string) string {
+		sub := drawShortcodeRe.FindStringSubmatch(m)
+		if len(sub) < 2 {
+			return m
+		}
+		id := sub[1]
+		mode := "view"
+		if len(sub) >= 3 && sub[2] == "edit" {
+			mode = "edit"
+		}
+		src := basePath + "/" + id
+		if mode == "edit" {
+			src += "/edit"
+		}
+		return fmt.Sprintf(
+			`<div class="godraw-embed" data-src="%s" data-width="100%%" data-height="520px" data-base-path="%s"></div>`+
+				`<script src="%s/static/embed.js"></script>`,
+			src, basePath, basePath,
+		)
+	})
 }
 
 // wrapImageGalleries wraps bare <img> tags with lightbox links.

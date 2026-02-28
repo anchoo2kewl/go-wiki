@@ -8,13 +8,15 @@ import (
 
 // RendererOptions toggles features without touching code.
 type RendererOptions struct {
-	AddListClasses       bool // add classes to <ul>/<ol>/<li>
-	AddBlockquoteClasses bool // style blockquotes
-	EnableLightbox       bool // wrap images in anchors for lightbox
-	EnableYouTubeEmbeds  bool // turn plain YT links into iframes
-	EnableTaskListHTML   bool // turn - [x] into checkboxes
-	EnableMermaid        bool // convert ```mermaid to <div class="mermaid">
-	ProtectInlineCSS     bool // strip one-line CSS outsiders pasted accidentally
+	AddListClasses       bool   // add classes to <ul>/<ol>/<li>
+	AddBlockquoteClasses bool   // style blockquotes
+	EnableLightbox       bool   // wrap images in anchors for lightbox
+	EnableYouTubeEmbeds  bool   // turn plain YT links into iframes
+	EnableTaskListHTML   bool   // turn - [x] into checkboxes
+	EnableMermaid        bool   // convert ```mermaid to <div class="mermaid">
+	ProtectInlineCSS     bool   // strip one-line CSS outsiders pasted accidentally
+	EnableDrawEmbeds     bool   // turn [draw:id] shortcodes into go-draw iframes
+	DrawBasePath         string // URL prefix for go-draw (e.g. "/draw"), required when EnableDrawEmbeds is true
 }
 
 // ClassConfig allows consumers to override the default CSS classes
@@ -46,6 +48,7 @@ func DefaultOptions() RendererOptions {
 		EnableTaskListHTML:   true,
 		EnableMermaid:        true,
 		ProtectInlineCSS:     true,
+		EnableDrawEmbeds:     false, // opt-in; requires DrawBasePath
 	}
 }
 
@@ -125,6 +128,10 @@ func (r *Renderer) RenderWithDebug(content string, includeStages bool) (string, 
 	if r.Opt.EnableYouTubeEmbeds {
 		md = embedYouTube(md)
 		md = stage("08_youtube", md)
+	}
+	if r.Opt.EnableDrawEmbeds && r.Opt.DrawBasePath != "" {
+		md = embedDraw(md, r.Opt.DrawBasePath)
+		md = stage("08b_draw", md)
 	}
 	if r.Opt.AddListClasses {
 		md = addListClasses(md, r.Classes)
