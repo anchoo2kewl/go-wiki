@@ -1,0 +1,41 @@
+{{/* go-wiki editor toolbar + textarea + edit/preview tabs */}}
+<div class="gw-editor-toolbar">
+  <div class="gw-btn-group">
+    <button type="button" class="gw-btn" id="gw-bold"><b>B</b></button>
+    <button type="button" class="gw-btn" id="gw-italic"><i>I</i></button>
+    <span class="gw-sep"></span>
+    <button type="button" class="gw-btn" id="gw-h2">H2</button>
+    <button type="button" class="gw-btn" id="gw-h3">H3</button>
+    <span class="gw-sep"></span>
+    <button type="button" class="gw-btn" id="gw-ul">&bull; List</button>
+    <button type="button" class="gw-btn" id="gw-ol">1. List</button>
+    <button type="button" class="gw-btn" id="gw-blockquote">&ldquo; Quote</button>
+    <button type="button" class="gw-btn" id="gw-hr">HR</button>
+    <button type="button" class="gw-btn" id="gw-code">Code</button>
+    <span class="gw-sep"></span>
+    <button type="button" class="gw-btn" id="gw-link">Link</button>
+  </div>
+
+  <div class="gw-segmented">
+    <button type="button" id="gw-tab-edit" class="gw-seg-btn active">Edit</button>
+    <button type="button" id="gw-tab-preview" class="gw-seg-btn">Preview</button>
+    <label class="gw-seg-opt">
+      <input type="checkbox" id="gw-preview-full" checked /> Full
+    </label>
+  </div>
+
+  {{if .EnableFullscreen}}
+  <button type="button" id="gw-fullscreen-btn" class="gw-btn-fullscreen" title="Fullscreen split view (F11)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+    </svg>
+    Fullscreen
+  </button>
+  {{end}}
+</div>
+
+<textarea id="{{.TextareaID}}" name="{{.TextareaName}}" class="gw-form-input" style="min-height: 400px; font-family: ui-monospace, SFMono-Regular, Consolas, Monaco, monospace; font-size: 14px; line-height: 1.5; resize: vertical;">{{.InitialContent}}</textarea>
+
+<div id="gw-preview" class="gw-preview gw-hidden">
+  <div id="gw-preview-content" class="gw-preview-content"></div>
+</div>
