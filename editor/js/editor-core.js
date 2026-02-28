@@ -189,7 +189,7 @@
       e.preventDefault();
       dragCounter++;
       if (e.dataTransfer && e.dataTransfer.types.indexOf('Files') !== -1) {
-        if (overlay) overlay.classList.remove('gw-hidden');
+        if (overlay) overlay.classList.add('gw-drop-active');
       }
     });
     wrap.addEventListener('dragover', function(e) {
@@ -201,13 +201,13 @@
       dragCounter--;
       if (dragCounter <= 0) {
         dragCounter = 0;
-        if (overlay) overlay.classList.add('gw-hidden');
+        if (overlay) overlay.classList.remove('gw-drop-active');
       }
     });
     wrap.addEventListener('drop', function(e) {
       e.preventDefault();
       dragCounter = 0;
-      if (overlay) overlay.classList.add('gw-hidden');
+      if (overlay) overlay.classList.remove('gw-drop-active');
 
       var files = e.dataTransfer && e.dataTransfer.files;
       if (!files || files.length === 0) return;

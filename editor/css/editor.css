@@ -185,7 +185,7 @@
 .gw-drop-overlay {
   position: absolute;
   inset: 0;
-  display: flex;
+  display: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -198,6 +198,9 @@
   font-size: 14px;
   font-weight: 500;
   color: #6366f1;
+}
+.gw-drop-overlay.gw-drop-active {
+  display: flex;
 }
 .dark .gw-drop-overlay {
   background: rgba(129,140,248,0.08);
