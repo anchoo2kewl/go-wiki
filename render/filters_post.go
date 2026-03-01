@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// drawShortcodeRe matches [draw:id] or [draw:id:edit] shortcodes.
-// Captures: (1) drawing ID, (2) optional ":edit" suffix.
-var drawShortcodeRe = regexp.MustCompile(`(?i)\[draw:([a-z0-9][a-z0-9\-]{0,62})(?::(edit))?\]`)
+// drawShortcodeRe matches [draw:id], [draw:id:edit], [draw:id:s], [draw:id:edit:l] etc.
+// Captures: (1) drawing ID, (2) optional "edit", (3) optional size "s|m|l" (or long forms).
+var drawShortcodeRe = regexp.MustCompile(`(?i)\[draw:([a-z0-9][a-z0-9\-]{0,62})(?::(edit))?(?::(s|m|l|small|medium|large))?\]`)
 
 // Pre-compiled regexes (compiled once at startup)
 var (
@@ -136,8 +136,17 @@ func convertInlineEmphasisInHTML(html string) string {
 	return html
 }
 
-// embedDraw replaces [draw:id] and [draw:id:edit] shortcodes with go-draw
-// resizable iframe embeds. basePath is the go-draw URL prefix (e.g. "/draw").
+// drawSizeMap maps size keywords to width/height for embedded canvases.
+// Accepts both short (s/m/l) and long (small/medium/large) forms.
+var drawSizeMap = map[string][2]string{
+	"s": {"50%", "300px"}, "small": {"50%", "300px"},
+	"m": {"100%", "520px"}, "medium": {"100%", "520px"},
+	"l": {"100%", "720px"}, "large": {"100%", "720px"},
+}
+
+// embedDraw replaces [draw:id], [draw:id:edit], and [draw:id:edit:size]
+// shortcodes with go-draw resizable iframe embeds.
+// basePath is the go-draw URL prefix (e.g. "/draw").
 func embedDraw(html string, basePath string) string {
 	return drawShortcodeRe.ReplaceAllStringFunc(html, func(m string) string {
 		sub := drawShortcodeRe.FindStringSubmatch(m)
@@ -149,14 +158,22 @@ func embedDraw(html string, basePath string) string {
 		if len(sub) >= 3 && sub[2] == "edit" {
 			mode = "edit"
 		}
+		size := "medium"
+		if len(sub) >= 4 && sub[3] != "" {
+			size = sub[3]
+		}
+		dims, ok := drawSizeMap[size]
+		if !ok {
+			dims = drawSizeMap["medium"]
+		}
 		src := basePath + "/" + id
 		if mode == "edit" {
 			src += "/edit"
 		}
 		return fmt.Sprintf(
-			`<div class="godraw-embed" data-src="%s" data-width="100%%" data-height="520px" data-base-path="%s"></div>`+
+			`<div class="godraw-embed" data-src="%s" data-width="%s" data-height="%s" data-base-path="%s"></div>`+
 				`<script src="%s/static/embed.js"></script>`,
-			src, basePath, basePath,
+			src, dims[0], dims[1], basePath, basePath,
 		)
 	})
 }

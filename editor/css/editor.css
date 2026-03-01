@@ -461,6 +461,26 @@
 .dark .gw-draw-action-edit { background: #1e293b; color: #e5e7eb; }
 .dark .gw-draw-action-edit:hover { background: #334155; }
 
+/* Insert group (S M L buttons) */
+.gw-draw-insert-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.gw-draw-insert-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-right: 2px;
+}
+.dark .gw-draw-insert-label { color: #9ca3af; }
+.gw-draw-size-btn {
+  min-width: 24px;
+  text-align: center;
+  padding: .25rem .35rem;
+  font-size: 11px;
+}
+
 .gw-draw-action-delete {
   background: #fee2e2;
   color: #dc2626;

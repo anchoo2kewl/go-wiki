@@ -314,8 +314,10 @@
       var div = embeds[i];
       var src = div.getAttribute('data-src');
       var w = div.getAttribute('data-width') || '100%';
-      var h = div.getAttribute('data-height') || '400px';
+      var h = div.getAttribute('data-height') || '520px';
       if (!src) continue;
+      // Preview always shows read-only view — strip /edit suffix
+      src = src.replace(/\/edit$/, '');
       var iframe = document.createElement('iframe');
       iframe.src = src;
       iframe.style.width = w;
@@ -508,13 +510,29 @@
             var actions = document.createElement('div');
             actions.className = 'gw-draw-card-actions';
 
-            var insertBtn = document.createElement('button');
-            insertBtn.type = 'button';
-            insertBtn.className = 'gw-draw-action-btn gw-draw-action-insert';
-            insertBtn.textContent = 'Insert';
-            insertBtn.addEventListener('click', function() {
-              insertAtCursor(editor, '\n[draw:' + drw.id + ':edit]\n');
-              closeModal();
+            var sizes = [
+              { label: 'S', size: 's', title: 'Small' },
+              { label: 'M', size: 'm', title: 'Medium' },
+              { label: 'L', size: 'l', title: 'Large' }
+            ];
+            var insertGroup = document.createElement('span');
+            insertGroup.className = 'gw-draw-insert-group';
+            var insertLabel = document.createElement('span');
+            insertLabel.className = 'gw-draw-insert-label';
+            insertLabel.textContent = 'Insert';
+            insertGroup.appendChild(insertLabel);
+            sizes.forEach(function(s) {
+              var btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'gw-draw-action-btn gw-draw-action-insert gw-draw-size-btn';
+              btn.textContent = s.label;
+              btn.title = s.title;
+              btn.addEventListener('click', function() {
+                var sizeTag = s.size === 'm' ? '' : ':' + s.size;
+                insertAtCursor(editor, '\n[draw:' + drw.id + ':edit' + sizeTag + ']\n');
+                closeModal();
+              });
+              insertGroup.appendChild(btn);
             });
 
             var editBtn = document.createElement('button');
@@ -539,7 +557,7 @@
                 .catch(function() { alert('Failed to delete drawing'); });
             });
 
-            actions.appendChild(insertBtn);
+            actions.appendChild(insertGroup);
             actions.appendChild(editBtn);
             actions.appendChild(delBtn);
             card.appendChild(titleRow);
