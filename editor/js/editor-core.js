@@ -175,21 +175,87 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Image drag-and-drop upload
+  // Image upload (visible zone + drag fallback on textarea wrap)
   // ---------------------------------------------------------------------------
-  function setupDragDrop(textarea) {
+  function uploadFiles(files, textarea, uploadEndpoint) {
+    for (var i = 0; i < files.length; i++) {
+      (function(file) {
+        if (!file.type.startsWith('image/')) return;
+        var fd = new FormData();
+        fd.append('file', file);
+        fetch(uploadEndpoint, { method: 'POST', body: fd })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data && data.url) {
+              var name = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+              insertAtCursor(textarea, '![' + name + '](' + data.url + ')\n');
+            }
+          })
+          .catch(function(err) {
+            console.error('Image upload failed:', err);
+          });
+      })(files[i]);
+    }
+  }
+
+  function setupUploadZone(textarea) {
     var uploadEndpoint = cfg.uploadEndpoint;
     if (!uploadEndpoint) return;
 
-    var wrap = textarea.closest('.gw-editor-textarea-wrap') || textarea.parentElement;
-    var overlay = wrap && wrap.querySelector('.gw-drop-overlay');
+    var zone = textarea.closest('.gw-editor-container')
+      ? textarea.closest('.gw-editor-container').querySelector('.gw-upload-zone')
+      : (textarea.parentElement && textarea.parentElement.nextElementSibling && textarea.parentElement.nextElementSibling.classList.contains('gw-upload-zone')
+        ? textarea.parentElement.nextElementSibling
+        : document.getElementById('gw-upload-zone'));
+    var fileInput = zone && zone.querySelector('input[type="file"]');
+    var wrap = textarea.closest('.gw-editor-textarea-wrap') || textarea.closest('.gw-fullscreen-textarea-wrap') || textarea.parentElement;
     var dragCounter = 0;
 
+    // Click zone → trigger file input
+    if (zone && fileInput) {
+      zone.addEventListener('click', function() { fileInput.click(); });
+      fileInput.addEventListener('change', function() {
+        if (fileInput.files && fileInput.files.length > 0) {
+          uploadFiles(fileInput.files, textarea, uploadEndpoint);
+          fileInput.value = '';
+        }
+      });
+    }
+
+    // Drag events on the upload zone
+    if (zone) {
+      zone.addEventListener('dragenter', function(e) {
+        e.preventDefault();
+        dragCounter++;
+        if (e.dataTransfer && e.dataTransfer.types.indexOf('Files') !== -1) {
+          zone.classList.add('gw-drag-over');
+        }
+      });
+      zone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      });
+      zone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) { dragCounter = 0; zone.classList.remove('gw-drag-over'); }
+      });
+      zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dragCounter = 0;
+        zone.classList.remove('gw-drag-over');
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length > 0) uploadFiles(files, textarea, uploadEndpoint);
+      });
+    }
+
+    // Fallback: drag onto textarea wrap still works
+    var wrapDragCounter = 0;
     wrap.addEventListener('dragenter', function(e) {
       e.preventDefault();
-      dragCounter++;
-      if (e.dataTransfer && e.dataTransfer.types.indexOf('Files') !== -1) {
-        if (overlay) overlay.classList.add('gw-drop-active');
+      wrapDragCounter++;
+      if (e.dataTransfer && e.dataTransfer.types.indexOf('Files') !== -1 && zone) {
+        zone.classList.add('gw-drag-over');
       }
     });
     wrap.addEventListener('dragover', function(e) {
@@ -198,37 +264,37 @@
     });
     wrap.addEventListener('dragleave', function(e) {
       e.preventDefault();
-      dragCounter--;
-      if (dragCounter <= 0) {
-        dragCounter = 0;
-        if (overlay) overlay.classList.remove('gw-drop-active');
-      }
+      wrapDragCounter--;
+      if (wrapDragCounter <= 0) { wrapDragCounter = 0; if (zone) zone.classList.remove('gw-drag-over'); }
     });
     wrap.addEventListener('drop', function(e) {
       e.preventDefault();
-      dragCounter = 0;
-      if (overlay) overlay.classList.remove('gw-drop-active');
-
+      wrapDragCounter = 0;
+      if (zone) zone.classList.remove('gw-drag-over');
       var files = e.dataTransfer && e.dataTransfer.files;
-      if (!files || files.length === 0) return;
+      if (files && files.length > 0) uploadFiles(files, textarea, uploadEndpoint);
+    });
+  }
 
-      for (var i = 0; i < files.length; i++) {
-        (function(file) {
-          if (!file.type.startsWith('image/')) return;
-          var fd = new FormData();
-          fd.append('file', file);
-          fetch(uploadEndpoint, { method: 'POST', body: fd })
-            .then(function(res) { return res.json(); })
-            .then(function(data) {
-              if (data && data.url) {
-                var name = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
-                insertAtCursor(textarea, '![' + name + '](' + data.url + ')\n');
-              }
-            })
-            .catch(function(err) {
-              console.error('Image upload failed:', err);
-            });
-        })(files[i]);
+  // ---------------------------------------------------------------------------
+  // Double-click draw shortcode → open editor
+  // ---------------------------------------------------------------------------
+  function setupDrawShortcodeClick(textarea) {
+    var drawBase = cfg.drawBasePath;
+    if (!drawBase) return;
+
+    textarea.addEventListener('dblclick', function() {
+      var pos = textarea.selectionStart;
+      var val = textarea.value;
+      // Find the shortcode surrounding the cursor
+      var re = /\[draw:([a-zA-Z0-9_-]+)(?::edit)?\]/g;
+      var match;
+      while ((match = re.exec(val)) !== null) {
+        if (pos >= match.index && pos <= match.index + match[0].length) {
+          var drawId = match[1];
+          window.open(drawBase + '/' + drawId + '/edit', '_blank');
+          return;
+        }
       }
     });
   }
@@ -316,8 +382,11 @@
     // Undo/redo for the main editor textarea
     var undoMgr = createUndoManager(editor, 10);
 
-    // Set up drag-and-drop image upload
-    setupDragDrop(editor);
+    // Set up visible upload zone + drag fallback
+    setupUploadZone(editor);
+
+    // Set up double-click to open draw shortcodes
+    setupDrawShortcodeClick(editor);
 
     // Set up image browser
     var openImageBrowser = setupImageBrowser(editor);
@@ -356,6 +425,8 @@
           .then(function(data) {
             if (data && data.id) {
               insertAtCursor(editor, '\n[draw:' + data.id + ':edit]\n');
+              var editUrl = data.edit_url || (drawBase + '/' + data.id + '/edit');
+              window.open(editUrl, '_blank');
             }
           })
           .catch(function(err) {
@@ -377,6 +448,7 @@
     var tabPrev = document.getElementById('gw-tab-preview');
     var previewFull = document.getElementById('gw-preview-full');
     var editorWrap = document.getElementById('gw-editor-textarea-wrap') || editor;
+    var uploadZone = document.getElementById('gw-upload-zone');
     var previewEl = document.getElementById('gw-preview');
 
     if (tabEdit) {
@@ -384,6 +456,7 @@
         tabEdit.classList.add('active');
         if (tabPrev) tabPrev.classList.remove('active');
         editorWrap.classList.remove('gw-hidden');
+        if (uploadZone) uploadZone.classList.remove('gw-hidden');
         if (previewEl) previewEl.classList.add('gw-hidden');
       });
     }
@@ -393,6 +466,7 @@
         tabPrev.classList.add('active');
         if (tabEdit) tabEdit.classList.remove('active');
         editorWrap.classList.add('gw-hidden');
+        if (uploadZone) uploadZone.classList.add('gw-hidden');
         if (previewEl) previewEl.classList.remove('gw-hidden');
         renderPreview(editor.value, previewFull && previewFull.checked);
       });
@@ -416,6 +490,7 @@
     removeMore: removeMore,
     renderPreview: renderPreview,
     createUndoManager: createUndoManager,
-    setupDragDrop: setupDragDrop
+    setupUploadZone: setupUploadZone,
+    setupDrawShortcodeClick: setupDrawShortcodeClick
   };
 })();

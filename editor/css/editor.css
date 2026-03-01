@@ -178,37 +178,58 @@
 .dark .gw-preview-content :not(pre) > code { background: #1e293b; color: #fb7185; }
 .gw-preview-content img { max-width: 100%; height: auto; border-radius: 8px; margin: 1rem 0; }
 
-/* Textarea wrapper for drop overlay */
+/* Textarea wrapper */
 .gw-editor-textarea-wrap {
   position: relative;
 }
-.gw-drop-overlay {
-  position: absolute;
-  inset: 0;
-  display: none;
-  flex-direction: column;
+
+/* Visible upload zone */
+.gw-upload-zone {
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  height: 40px;
+  border: 2px dashed #d1d5db;
+  border-radius: 0 0 .5rem .5rem;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 13px;
+  color: #6b7280;
+  transition: border-color 0.15s, background 0.15s;
+  margin-top: -1px;
+}
+.gw-upload-zone:hover {
+  border-color: #a5b4fc;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+.gw-upload-zone svg { stroke: #9ca3af; transition: stroke 0.15s; }
+.gw-upload-zone:hover svg { stroke: #6366f1; }
+.gw-upload-zone.gw-drag-over {
+  border-color: #6366f1;
   background: rgba(99,102,241,0.08);
-  border: 2px dashed #6366f1;
-  border-radius: .5rem;
-  pointer-events: none;
-  z-index: 5;
-  font-size: 14px;
-  font-weight: 500;
-  color: #6366f1;
+  color: #4f46e5;
 }
-.gw-drop-overlay.gw-drop-active {
-  display: flex;
+.gw-upload-zone.gw-drag-over svg { stroke: #6366f1; }
+.dark .gw-upload-zone {
+  border-color: #374151;
+  background: #0f172a;
+  color: #9ca3af;
 }
-.dark .gw-drop-overlay {
-  background: rgba(129,140,248,0.08);
+.dark .gw-upload-zone:hover {
   border-color: #818cf8;
-  color: #818cf8;
+  background: rgba(129,140,248,0.08);
+  color: #a5b4fc;
 }
-.gw-drop-overlay svg { stroke: #6366f1; }
-.dark .gw-drop-overlay svg { stroke: #818cf8; }
+.dark .gw-upload-zone svg { stroke: #6b7280; }
+.dark .gw-upload-zone:hover svg { stroke: #818cf8; }
+.dark .gw-upload-zone.gw-drag-over {
+  border-color: #818cf8;
+  background: rgba(129,140,248,0.08);
+  color: #a5b4fc;
+}
+.dark .gw-upload-zone.gw-drag-over svg { stroke: #818cf8; }
 
 /* Image browser modal */
 .gw-modal {

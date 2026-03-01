@@ -31,9 +31,14 @@
       fsUndoMgr = gw.createUndoManager(fsTextarea, 10);
     }
 
-    // Set up drag-and-drop for fullscreen textarea
-    if (gw.setupDragDrop) {
-      gw.setupDragDrop(fsTextarea);
+    // Set up upload zone for fullscreen textarea
+    if (gw.setupUploadZone) {
+      gw.setupUploadZone(fsTextarea);
+    }
+
+    // Set up double-click to open draw shortcodes in fullscreen
+    if (gw.setupDrawShortcodeClick) {
+      gw.setupDrawShortcodeClick(fsTextarea);
     }
 
     fsBtn && fsBtn.addEventListener('click', enterFullscreen);
@@ -137,6 +142,8 @@
           .then(function(data) {
             if (data && data.id) {
               gw.insertAtCursor(fsTextarea, '\n[draw:' + data.id + ':edit]\n');
+              var editUrl = data.edit_url || (drawBase + '/' + data.id + '/edit');
+              window.open(editUrl, '_blank');
             }
           })
           .catch(function(err) { alert('Failed to create drawing: ' + err.message); });
