@@ -25,14 +25,17 @@ import (
 type Wiki struct {
 	Renderer *render.Renderer
 
-	rendererOpts      render.RendererOptions
-	classConfig       render.ClassConfig
-	hasCustomClasses  bool
-	previewEndpoint   string
-	uploadEndpoint    string
-	imageListEndpoint string
-	enableMore        bool
-	fullscreen        bool
+	rendererOpts                render.RendererOptions
+	classConfig                 render.ClassConfig
+	hasCustomClasses            bool
+	previewEndpoint             string
+	uploadEndpoint              string
+	imageListEndpoint           string
+	imageMetadataEndpoint       string
+	cloudinarySignatureEndpoint string
+	cloudinaryCloudName         string
+	enableMore                  bool
+	fullscreen                  bool
 }
 
 // New creates a Wiki with the given options. Defaults: all rendering features
@@ -82,15 +85,18 @@ func (w *Wiki) AssetHandler() http.Handler {
 // textarea, fullscreen overlay, inline CSS/JS — ready to embed in a page.
 func (w *Wiki) EditorHTML(content string) (template.HTML, error) {
 	cfg := editor.EditorConfig{
-		PreviewEndpoint:   w.previewEndpoint,
-		UploadEndpoint:    w.uploadEndpoint,
-		ImageListEndpoint: w.imageListEndpoint,
-		EnableFullscreen:  w.fullscreen,
-		EnableImageUpload: w.uploadEndpoint != "",
-		EnableMore:        w.enableMore,
-		TextareaName:      "content",
-		InitialContent:    content,
-		DrawBasePath:      w.rendererOpts.DrawBasePath,
+		PreviewEndpoint:             w.previewEndpoint,
+		UploadEndpoint:              w.uploadEndpoint,
+		ImageListEndpoint:           w.imageListEndpoint,
+		ImageMetadataEndpoint:       w.imageMetadataEndpoint,
+		CloudinarySignatureEndpoint: w.cloudinarySignatureEndpoint,
+		CloudinaryCloudName:         w.cloudinaryCloudName,
+		EnableFullscreen:            w.fullscreen,
+		EnableImageUpload:           w.uploadEndpoint != "",
+		EnableMore:                  w.enableMore,
+		TextareaName:                "content",
+		InitialContent:              content,
+		DrawBasePath:                w.rendererOpts.DrawBasePath,
 	}
 	return editor.RenderEditor(cfg)
 }

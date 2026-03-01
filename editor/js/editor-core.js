@@ -178,12 +178,86 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Image markup builder (shared by image browser + drag-drop)
+  // ---------------------------------------------------------------------------
+  function buildImageMarkup(url, alt, caption) {
+    alt = alt || '';
+    caption = (caption || '').trim();
+    if (caption) {
+      return '\n<figure style="text-align:center; margin: 1.5rem 0;">\n' +
+        '  <a href="' + url + '" data-lightbox="article-images" data-title="' + alt.replace(/"/g, '&quot;') + '">\n' +
+        '    <img src="' + url + '" alt="' + alt.replace(/"/g, '&quot;') + '" style="width:100%; height:auto; max-width:100%;" />\n' +
+        '  </a>\n' +
+        '  <figcaption>' + caption + '</figcaption>\n' +
+        '</figure>\n';
+    }
+    return '![' + alt + '](' + url + ')\n';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cloudinary upload helper
+  // ---------------------------------------------------------------------------
+  function uploadToCloudinary(file, folder) {
+    var signatureEndpoint = cfg.cloudinarySignatureEndpoint;
+    var cloudName = cfg.cloudinaryCloudName;
+    if (!signatureEndpoint || !cloudName) return Promise.reject(new Error('Cloudinary not configured'));
+
+    return fetch(signatureEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: folder || 'blog/images' })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(sig) {
+      var fd = new FormData();
+      fd.append('file', file);
+      fd.append('api_key', sig.api_key);
+      fd.append('timestamp', sig.timestamp);
+      fd.append('signature', sig.signature);
+      if (folder) fd.append('folder', folder);
+      return fetch('https://api.cloudinary.com/v1_1/' + cloudName + '/auto/upload', {
+        method: 'POST',
+        body: fd
+      });
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.secure_url) return data.secure_url;
+      if (data.url) return data.url;
+      throw new Error(data.error ? data.error.message : 'Upload failed');
+    });
+  }
+
+  // Save image metadata to backend
+  function saveImageMetadata(url, alt, caption) {
+    var endpoint = cfg.imageMetadataEndpoint;
+    if (!endpoint) return Promise.resolve();
+    return fetch(endpoint, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: url, alt_text: alt || '', title: '', caption: caption || '' })
+    });
+  }
+
+  function isCloudinaryConfigured() {
+    return !!(cfg.cloudinarySignatureEndpoint && cfg.cloudinaryCloudName);
+  }
+
+  // ---------------------------------------------------------------------------
   // Image upload (visible zone + drag fallback on textarea wrap)
   // ---------------------------------------------------------------------------
   function uploadFiles(files, textarea, uploadEndpoint) {
     for (var i = 0; i < files.length; i++) {
       (function(file) {
         if (!file.type.startsWith('image/')) return;
+
+        // If Cloudinary configured, show inline toast for alt text before uploading
+        if (isCloudinaryConfigured()) {
+          showInlineUploadToast(file, textarea);
+          return;
+        }
+
+        // Fallback: local upload
         var fd = new FormData();
         fd.append('file', file);
         fetch(uploadEndpoint, { method: 'POST', body: fd })
@@ -199,6 +273,72 @@
           });
       })(files[i]);
     }
+  }
+
+  // Show an inline toast near the textarea for entering alt text before Cloudinary upload
+  function showInlineUploadToast(file, textarea) {
+    // Remove any existing toast
+    var existing = document.querySelector('.gw-inline-upload-toast');
+    if (existing) existing.remove();
+
+    var wrap = textarea.closest('.gw-editor-textarea-wrap') || textarea.closest('.gw-fullscreen-textarea-wrap') || textarea.parentElement;
+    wrap.style.position = 'relative';
+
+    var toast = document.createElement('div');
+    toast.className = 'gw-inline-upload-toast';
+
+    var defaultAlt = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+
+    toast.innerHTML =
+      '<div class="gw-inline-upload-toast-row">' +
+        '<img class="gw-inline-upload-toast-thumb" src="" alt="Preview" />' +
+        '<div class="gw-inline-upload-toast-fields">' +
+          '<label class="gw-img-field-label">Alt text</label>' +
+          '<input type="text" class="gw-img-input" id="gw-toast-alt" value="' + defaultAlt.replace(/"/g, '&quot;') + '" />' +
+          '<label class="gw-img-field-label">Caption <span style="color:#9ca3af">(optional)</span></label>' +
+          '<input type="text" class="gw-img-input" id="gw-toast-caption" placeholder="Caption" />' +
+        '</div>' +
+      '</div>' +
+      '<div class="gw-inline-upload-toast-actions">' +
+        '<button type="button" class="gw-img-btn-cancel" id="gw-toast-cancel">Cancel</button>' +
+        '<button type="button" class="gw-img-btn-insert" id="gw-toast-upload">Upload &amp; Insert</button>' +
+      '</div>';
+
+    wrap.appendChild(toast);
+
+    // Show file preview
+    var thumb = toast.querySelector('.gw-inline-upload-toast-thumb');
+    var reader = new FileReader();
+    reader.onload = function(e) { thumb.src = e.target.result; };
+    reader.readAsDataURL(file);
+
+    var altInput = toast.querySelector('#gw-toast-alt');
+    altInput.focus();
+    altInput.select();
+
+    toast.querySelector('#gw-toast-cancel').addEventListener('click', function() { toast.remove(); });
+    toast.querySelector('#gw-toast-upload').addEventListener('click', function() {
+      var alt = altInput.value.trim();
+      var caption = toast.querySelector('#gw-toast-caption').value.trim();
+      var submitBtn = toast.querySelector('#gw-toast-upload');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Uploading...';
+
+      var folder = cfg.cloudinaryFolder || 'blog/images';
+      uploadToCloudinary(file, folder)
+        .then(function(url) {
+          return saveImageMetadata(url, alt, caption).then(function() { return url; });
+        })
+        .then(function(url) {
+          insertAtCursor(textarea, buildImageMarkup(url, alt, caption));
+          toast.remove();
+        })
+        .catch(function(err) {
+          alert('Upload failed: ' + err.message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Upload & Insert';
+        });
+    });
   }
 
   function setupUploadZone(textarea) {
@@ -337,7 +477,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Image browser modal
+  // Image browser modal (image manager)
   // ---------------------------------------------------------------------------
   function setupImageBrowser(editor) {
     var listEndpoint = cfg.imageListEndpoint;
@@ -347,65 +487,313 @@
     var grid = document.getElementById('gw-image-grid');
     var closeBtn = document.getElementById('gw-image-modal-close');
     var backdrop = modal && modal.querySelector('.gw-modal-backdrop');
+    var tabBar = document.getElementById('gw-img-tabs');
+    var browseView = document.getElementById('gw-img-browse-view');
+    var uploadView = document.getElementById('gw-img-upload-view');
+    var uploadBtn = document.getElementById('gw-img-upload-btn');
+    var backBtn = document.getElementById('gw-img-back-btn');
+    var insertPanel = document.getElementById('gw-img-insert-panel');
     if (!modal || !grid) return;
+
+    var allImages = [];
+    var selectedImage = null;
+    var currentTab = 'all';
 
     function closeModal() {
       modal.classList.add('gw-hidden');
+      hideInsertPanel();
+      showBrowseView();
     }
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
     if (backdrop) backdrop.addEventListener('click', closeModal);
 
+    // Escape key closes modal
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && !modal.classList.contains('gw-hidden')) closeModal();
+    });
+
+    function showBrowseView() {
+      if (browseView) browseView.classList.remove('gw-hidden');
+      if (uploadView) uploadView.classList.add('gw-hidden');
+    }
+    function showUploadView() {
+      if (browseView) browseView.classList.add('gw-hidden');
+      if (uploadView) uploadView.classList.remove('gw-hidden');
+      hideInsertPanel();
+      resetUploadForm();
+    }
+
+    // --- Tab switching ---
+    if (tabBar) {
+      var tabs = tabBar.querySelectorAll('.gw-img-tab');
+      tabs.forEach(function(tab) {
+        tab.addEventListener('click', function() {
+          tabs.forEach(function(t) { t.classList.remove('active'); });
+          tab.classList.add('active');
+          currentTab = tab.getAttribute('data-tab');
+          renderGrid();
+          hideInsertPanel();
+        });
+      });
+    }
+
+    // --- Upload button ---
+    if (uploadBtn) {
+      uploadBtn.addEventListener('click', showUploadView);
+    }
+    if (backBtn) {
+      backBtn.addEventListener('click', showBrowseView);
+    }
+
+    // --- Insert panel ---
+    function showInsertPanel(img) {
+      selectedImage = img;
+      if (!insertPanel) return;
+      insertPanel.classList.remove('gw-hidden');
+      var thumb = document.getElementById('gw-img-insert-thumb');
+      var altInput = document.getElementById('gw-img-insert-alt');
+      var captionInput = document.getElementById('gw-img-insert-caption');
+      if (thumb) thumb.src = img.url;
+      if (altInput) altInput.value = img.alt_text || img.filename || '';
+      if (captionInput) captionInput.value = img.caption || '';
+    }
+
+    function hideInsertPanel() {
+      selectedImage = null;
+      if (insertPanel) insertPanel.classList.add('gw-hidden');
+      // Deselect all cards
+      grid.querySelectorAll('.gw-img-card.gw-selected').forEach(function(c) { c.classList.remove('gw-selected'); });
+    }
+
+    // Insert button
+    var insertBtn = document.getElementById('gw-img-insert-btn');
+    if (insertBtn) {
+      insertBtn.addEventListener('click', function() {
+        if (!selectedImage) return;
+        var alt = (document.getElementById('gw-img-insert-alt') || {}).value || '';
+        var caption = (document.getElementById('gw-img-insert-caption') || {}).value || '';
+        // Save updated metadata
+        saveImageMetadata(selectedImage.url, alt, caption);
+        insertAtCursor(editor, buildImageMarkup(selectedImage.url, alt, caption));
+        closeModal();
+      });
+    }
+
+    // Cancel insert
+    var insertCancel = document.getElementById('gw-img-insert-cancel');
+    if (insertCancel) {
+      insertCancel.addEventListener('click', hideInsertPanel);
+    }
+
+    // --- Grid rendering ---
+    function getPostImageUrls() {
+      var content = editor.value || '';
+      var urls = {};
+      // Match markdown images: ![...](url)
+      var re1 = /!\[[^\]]*\]\(([^)]+)\)/g;
+      var m;
+      while ((m = re1.exec(content)) !== null) urls[m[1]] = true;
+      // Match HTML img src="url"
+      var re2 = /src="([^"]+)"/g;
+      while ((m = re2.exec(content)) !== null) urls[m[1]] = true;
+      // Match href="url" (for lightbox links)
+      var re3 = /href="(https?:\/\/res\.cloudinary\.com[^"]+)"/g;
+      while ((m = re3.exec(content)) !== null) urls[m[1]] = true;
+      return urls;
+    }
+
+    function renderGrid() {
+      grid.innerHTML = '';
+      var images = allImages;
+
+      if (currentTab === 'post') {
+        var postUrls = getPostImageUrls();
+        images = images.filter(function(img) { return postUrls[img.url]; });
+      }
+
+      if (images.length === 0) {
+        grid.innerHTML = '<div class="gw-img-empty">' +
+          (currentTab === 'post' ? 'No images in this post yet' : 'No images uploaded yet') +
+          '</div>';
+        return;
+      }
+
+      images.forEach(function(img) {
+        var card = document.createElement('div');
+        card.className = 'gw-img-card';
+        card.innerHTML = '<img src="' + img.url + '" alt="' + (img.alt_text || img.filename || '') + '" loading="lazy"/>' +
+          '<span class="gw-img-name">' + (img.alt_text || img.filename || '') + '</span>' +
+          '<button type="button" class="gw-img-delete" title="Delete image">&times;</button>';
+
+        // Click card → select and show insert panel
+        card.addEventListener('click', function(e) {
+          if (e.target.classList.contains('gw-img-delete')) return;
+          // Deselect others
+          grid.querySelectorAll('.gw-img-card.gw-selected').forEach(function(c) { c.classList.remove('gw-selected'); });
+          card.classList.add('gw-selected');
+          showInsertPanel(img);
+        });
+
+        // Delete button
+        var delBtn = card.querySelector('.gw-img-delete');
+        if (delBtn) {
+          delBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (!confirm('Remove this image from the manager?')) return;
+            var metaEndpoint = cfg.imageMetadataEndpoint;
+            if (metaEndpoint) {
+              fetch(metaEndpoint + '?url=' + encodeURIComponent(img.url), { method: 'DELETE' })
+                .then(function(res) {
+                  if (res.ok) {
+                    card.remove();
+                    allImages = allImages.filter(function(i) { return i.url !== img.url; });
+                    if (selectedImage && selectedImage.url === img.url) hideInsertPanel();
+                  } else {
+                    alert('Failed to delete image');
+                  }
+                })
+                .catch(function() { alert('Failed to delete image'); });
+            }
+          });
+        }
+        grid.appendChild(card);
+      });
+    }
+
+    // --- Upload form ---
+    function resetUploadForm() {
+      var dropzone = document.getElementById('gw-img-upload-dropzone');
+      var preview = document.getElementById('gw-img-upload-preview');
+      var fileInput = document.getElementById('gw-img-upload-input');
+      if (dropzone) dropzone.classList.remove('gw-hidden');
+      if (preview) preview.classList.add('gw-hidden');
+      if (fileInput) fileInput.value = '';
+    }
+
+    function setupUploadForm() {
+      var dropzone = document.getElementById('gw-img-upload-dropzone');
+      var fileInput = document.getElementById('gw-img-upload-input');
+      var preview = document.getElementById('gw-img-upload-preview');
+      var thumb = document.getElementById('gw-img-upload-thumb');
+      var altInput = document.getElementById('gw-img-upload-alt');
+      var captionInput = document.getElementById('gw-img-upload-caption');
+      var cancelBtn = document.getElementById('gw-img-upload-cancel');
+      var submitBtn = document.getElementById('gw-img-upload-submit');
+      if (!dropzone) return;
+
+      var pendingFile = null;
+
+      function showFilePreview(file) {
+        pendingFile = file;
+        var defaultAlt = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+        if (altInput) { altInput.value = defaultAlt; }
+        if (captionInput) { captionInput.value = ''; }
+        if (thumb) {
+          var reader = new FileReader();
+          reader.onload = function(e) { thumb.src = e.target.result; };
+          reader.readAsDataURL(file);
+        }
+        dropzone.classList.add('gw-hidden');
+        if (preview) preview.classList.remove('gw-hidden');
+        if (altInput) { altInput.focus(); altInput.select(); }
+      }
+
+      dropzone.addEventListener('click', function() { if (fileInput) fileInput.click(); });
+      if (fileInput) {
+        fileInput.addEventListener('change', function() {
+          if (fileInput.files && fileInput.files[0]) showFilePreview(fileInput.files[0]);
+        });
+      }
+
+      // Drag & drop on the upload dropzone
+      var dragCount = 0;
+      dropzone.addEventListener('dragenter', function(e) { e.preventDefault(); dragCount++; dropzone.classList.add('gw-drag-over'); });
+      dropzone.addEventListener('dragover', function(e) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
+      dropzone.addEventListener('dragleave', function(e) { e.preventDefault(); dragCount--; if (dragCount <= 0) { dragCount = 0; dropzone.classList.remove('gw-drag-over'); } });
+      dropzone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dragCount = 0;
+        dropzone.classList.remove('gw-drag-over');
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files[0] && files[0].type.startsWith('image/')) showFilePreview(files[0]);
+      });
+
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', function() {
+          pendingFile = null;
+          resetUploadForm();
+        });
+      }
+
+      if (submitBtn) {
+        submitBtn.addEventListener('click', function() {
+          if (!pendingFile) return;
+          var alt = (altInput ? altInput.value.trim() : '') || '';
+          var caption = (captionInput ? captionInput.value.trim() : '') || '';
+          if (!alt) { alert('Alt text is required'); if (altInput) altInput.focus(); return; }
+
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Uploading...';
+
+          var folder = cfg.cloudinaryFolder || 'blog/images';
+          uploadToCloudinary(pendingFile, folder)
+            .then(function(url) {
+              return saveImageMetadata(url, alt, caption).then(function() { return url; });
+            })
+            .then(function(url) {
+              insertAtCursor(editor, buildImageMarkup(url, alt, caption));
+              // Add to allImages for immediate grid display
+              allImages.unshift({ url: url, alt_text: alt, caption: caption, filename: pendingFile.name });
+              pendingFile = null;
+              resetUploadForm();
+              showBrowseView();
+              renderGrid();
+            })
+            .catch(function(err) {
+              alert('Upload failed: ' + err.message);
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Upload & Insert';
+            });
+        });
+      }
+    }
+
+    // --- Open modal ---
     function openModal() {
       modal.classList.remove('gw-hidden');
+      showBrowseView();
+      hideInsertPanel();
+
+      // Show/hide tab bar based on postId
+      if (tabBar) {
+        if (cfg.postId) {
+          tabBar.classList.remove('gw-hidden');
+          // Default to Post Images tab when editing
+          currentTab = 'post';
+          var tabs = tabBar.querySelectorAll('.gw-img-tab');
+          tabs.forEach(function(t) {
+            t.classList.toggle('active', t.getAttribute('data-tab') === 'post');
+          });
+        } else {
+          tabBar.classList.add('gw-hidden');
+          currentTab = 'all';
+        }
+      }
+
       grid.innerHTML = '<div class="gw-img-loading">Loading images...</div>';
 
       fetch(listEndpoint)
         .then(function(res) { return res.json(); })
         .then(function(data) {
-          var images = data.images || [];
-          if (images.length === 0) {
-            grid.innerHTML = '<div class="gw-img-empty">No images uploaded yet</div>';
-            return;
-          }
-          grid.innerHTML = '';
-          images.forEach(function(img) {
-            var card = document.createElement('div');
-            card.className = 'gw-img-card';
-            card.innerHTML = '<img src="' + img.url + '" alt="' + (img.filename || '') + '" loading="lazy"/>' +
-              '<span class="gw-img-name">' + (img.filename || '') + '</span>' +
-              '<button type="button" class="gw-img-delete" title="Delete image">&times;</button>';
-
-            // Click card → insert into editor
-            card.addEventListener('click', function(e) {
-              if (e.target.classList.contains('gw-img-delete')) return;
-              var name = (img.filename || '').replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
-              insertAtCursor(editor, '![' + name + '](' + img.url + ')\n');
-              closeModal();
-            });
-
-            // Delete button
-            var delBtn = card.querySelector('.gw-img-delete');
-            if (delBtn) {
-              delBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                if (!confirm('Delete this image?')) return;
-                fetch(listEndpoint.replace('/list', '') + '?path=' + encodeURIComponent(img.url), { method: 'DELETE' })
-                  .then(function(res) {
-                    if (res.ok) {
-                      card.remove();
-                    } else {
-                      alert('Failed to delete image');
-                    }
-                  })
-                  .catch(function() { alert('Failed to delete image'); });
-              });
-            }
-            grid.appendChild(card);
-          });
+          allImages = data.images || [];
+          renderGrid();
         })
         .catch(function() {
           grid.innerHTML = '<div class="gw-img-empty">Failed to load images</div>';
         });
+
+      // Setup upload form (idempotent since we reset state)
+      setupUploadForm();
     }
 
     return openModal;
@@ -804,6 +1192,10 @@
     createUndoManager: createUndoManager,
     setupUploadZone: setupUploadZone,
     setupDrawShortcodeClick: setupDrawShortcodeClick,
-    initDrawEmbeds: initDrawEmbeds
+    initDrawEmbeds: initDrawEmbeds,
+    buildImageMarkup: buildImageMarkup,
+    uploadToCloudinary: uploadToCloudinary,
+    saveImageMetadata: saveImageMetadata,
+    isCloudinaryConfigured: isCloudinaryConfigured
   };
 })();

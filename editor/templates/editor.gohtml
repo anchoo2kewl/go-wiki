@@ -72,16 +72,70 @@
   <div id="gw-preview-content" class="gw-preview-content"></div>
 </div>
 
-<!-- Image browser modal (rendered by JS) -->
+<!-- Image manager modal -->
 <div id="gw-image-modal" class="gw-modal gw-hidden">
   <div class="gw-modal-backdrop"></div>
-  <div class="gw-modal-content">
+  <div class="gw-image-modal-content">
     <div class="gw-modal-header">
       <span>Images</span>
-      <button type="button" class="gw-modal-close" id="gw-image-modal-close">&times;</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        {{if .CloudinarySignatureEndpoint}}
+        <button type="button" class="gw-img-upload-btn" id="gw-img-upload-btn">+ Upload</button>
+        {{end}}
+        <button type="button" class="gw-modal-close" id="gw-image-modal-close">&times;</button>
+      </div>
+    </div>
+    <!-- Tab bar (only shown when postId is set via JS) -->
+    <div class="gw-img-tabs gw-hidden" id="gw-img-tabs">
+      <button type="button" class="gw-img-tab active" data-tab="post">Post Images</button>
+      <button type="button" class="gw-img-tab" data-tab="all">All Images</button>
     </div>
     <div class="gw-modal-body" id="gw-image-modal-body">
-      <div class="gw-image-grid" id="gw-image-grid"></div>
+      <!-- Browse view (default) -->
+      <div id="gw-img-browse-view">
+        <div class="gw-image-grid" id="gw-image-grid"></div>
+      </div>
+      <!-- Upload view (shown when + Upload clicked) -->
+      <div id="gw-img-upload-view" class="gw-hidden">
+        <div class="gw-img-upload-header">
+          <span style="font-weight:600;font-size:15px;">Upload Image</span>
+          <button type="button" class="gw-img-back-btn" id="gw-img-back-btn">Back</button>
+        </div>
+        <div class="gw-img-upload-dropzone" id="gw-img-upload-dropzone">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <span>Drop image here or click to select</span>
+          <input type="file" id="gw-img-upload-input" accept="image/*" style="display:none" />
+        </div>
+        <div id="gw-img-upload-preview" class="gw-img-upload-preview gw-hidden">
+          <div class="gw-img-upload-preview-row">
+            <img id="gw-img-upload-thumb" src="" alt="Preview" class="gw-img-upload-thumb" />
+            <div class="gw-img-upload-fields">
+              <label class="gw-img-field-label">Alt text <span style="color:#ef4444">*</span></label>
+              <input type="text" id="gw-img-upload-alt" class="gw-img-input" placeholder="Describe the image" />
+              <label class="gw-img-field-label">Caption <span style="color:#9ca3af">(optional)</span></label>
+              <input type="text" id="gw-img-upload-caption" class="gw-img-input" placeholder="Caption" />
+            </div>
+          </div>
+          <div class="gw-img-upload-actions">
+            <button type="button" class="gw-img-btn-cancel" id="gw-img-upload-cancel">Cancel</button>
+            <button type="button" class="gw-img-btn-insert" id="gw-img-upload-submit">Upload &amp; Insert</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Insert panel (shown when image selected from grid) -->
+    <div id="gw-img-insert-panel" class="gw-img-insert-panel gw-hidden">
+      <img id="gw-img-insert-thumb" src="" alt="" class="gw-img-insert-thumb" />
+      <div class="gw-img-insert-fields">
+        <label class="gw-img-field-label">Alt text</label>
+        <input type="text" id="gw-img-insert-alt" class="gw-img-input" placeholder="Alt text" />
+        <label class="gw-img-field-label">Caption <span style="color:#9ca3af">(optional)</span></label>
+        <input type="text" id="gw-img-insert-caption" class="gw-img-input" placeholder="Caption" />
+      </div>
+      <div class="gw-img-insert-actions">
+        <button type="button" class="gw-img-btn-cancel" id="gw-img-insert-cancel">Cancel</button>
+        <button type="button" class="gw-img-btn-insert" id="gw-img-insert-btn">Insert</button>
+      </div>
     </div>
   </div>
 </div>

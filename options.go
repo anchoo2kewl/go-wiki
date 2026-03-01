@@ -58,6 +58,29 @@ func WithEnableMore(enabled bool) Option {
 	}
 }
 
+// WithImageMetadataEndpoint sets the URL for CRUD operations on image metadata.
+// When set, the image manager tracks uploaded images with alt text and captions.
+func WithImageMetadataEndpoint(endpoint string) Option {
+	return func(w *Wiki) {
+		w.imageMetadataEndpoint = endpoint
+	}
+}
+
+// WithCloudinarySignatureEndpoint sets the URL for generating Cloudinary upload signatures.
+// When set, the editor supports direct browser-to-Cloudinary uploads.
+func WithCloudinarySignatureEndpoint(endpoint string) Option {
+	return func(w *Wiki) {
+		w.cloudinarySignatureEndpoint = endpoint
+	}
+}
+
+// WithCloudinaryCloudName sets the Cloudinary cloud name for direct uploads.
+func WithCloudinaryCloudName(cloudName string) Option {
+	return func(w *Wiki) {
+		w.cloudinaryCloudName = cloudName
+	}
+}
+
 // WithDrawBasePath enables go-draw embed support and sets the URL prefix
 // for go-draw routes (e.g. "/draw"). When set, [draw:id] and [draw:id:edit]
 // shortcodes in markdown are rendered as resizable go-draw iframe embeds.
