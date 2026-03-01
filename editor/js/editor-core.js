@@ -440,8 +440,83 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Double-click draw shortcode → open editor
+  // Double-click draw shortcode → edit popover (size/zoom/open editor)
   // ---------------------------------------------------------------------------
+  function showDrawEditPopover(textarea, match, matchIndex) {
+    var drawBase = cfg.drawBasePath;
+    if (!drawBase) return;
+
+    // Remove any existing popover
+    var existing = document.querySelector('.gw-draw-edit-popover');
+    if (existing) existing.remove();
+
+    // Parse current shortcode: [draw:ID:edit:SIZE:zZOOM]
+    var fullMatch = match[0];
+    var drawId = match[1];
+    var currentSize = match[2] || 'm';
+    var currentZoom = match[3] || 'fit';
+
+    var wrap = textarea.closest('.gw-editor-textarea-wrap') || textarea.closest('.gw-fullscreen-textarea-wrap') || textarea.parentElement;
+    wrap.style.position = 'relative';
+
+    var popover = document.createElement('div');
+    popover.className = 'gw-draw-edit-popover';
+
+    popover.innerHTML =
+      '<div class="gw-draw-edit-popover-title">Edit Draw Shortcode</div>' +
+      '<div class="gw-draw-edit-popover-row">' +
+        '<span class="gw-draw-edit-popover-label">Size</span>' +
+        '<select class="gw-draw-select" id="gw-dep-size">' +
+          '<option value="s"' + (currentSize === 's' ? ' selected' : '') + '>Small</option>' +
+          '<option value="m"' + (currentSize === 'm' ? ' selected' : '') + '>Medium</option>' +
+          '<option value="l"' + (currentSize === 'l' ? ' selected' : '') + '>Large</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="gw-draw-edit-popover-row">' +
+        '<span class="gw-draw-edit-popover-label">Zoom</span>' +
+        '<select class="gw-draw-select" id="gw-dep-zoom">' +
+          '<option value="fit"' + (currentZoom === 'fit' ? ' selected' : '') + '>fit</option>' +
+          '<option value="50%"' + (currentZoom === '50%' ? ' selected' : '') + '>50%</option>' +
+          '<option value="100%"' + (currentZoom === '100%' ? ' selected' : '') + '>100%</option>' +
+          '<option value="150%"' + (currentZoom === '150%' ? ' selected' : '') + '>150%</option>' +
+          '<option value="200%"' + (currentZoom === '200%' ? ' selected' : '') + '>200%</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="gw-draw-edit-popover-actions">' +
+        '<button type="button" class="gw-img-btn-cancel" id="gw-dep-cancel">Cancel</button>' +
+        '<button type="button" class="gw-img-btn-cancel" id="gw-dep-open" style="color:#4f46e5;border-color:#818cf8">Open Editor</button>' +
+        '<button type="button" class="gw-img-btn-insert" id="gw-dep-update">Update</button>' +
+      '</div>';
+
+    wrap.appendChild(popover);
+
+    popover.querySelector('#gw-dep-cancel').addEventListener('click', function() { popover.remove(); });
+    popover.querySelector('#gw-dep-open').addEventListener('click', function() {
+      window.open(drawBase + '/' + drawId + '/edit', '_blank');
+      popover.remove();
+    });
+    popover.querySelector('#gw-dep-update').addEventListener('click', function() {
+      var newSize = popover.querySelector('#gw-dep-size').value;
+      var newZoom = popover.querySelector('#gw-dep-zoom').value;
+      var sizeTag = (!newSize || newSize === 'm') ? '' : ':' + newSize;
+      var zoomTag = (!newZoom || newZoom === 'fit') ? '' : ':z' + newZoom;
+      var newShortcode = '[draw:' + drawId + ':edit' + sizeTag + zoomTag + ']';
+
+      if (textarea._undoMgr) textarea._undoMgr.checkpoint();
+      var val = textarea.value;
+      textarea.value = val.substring(0, matchIndex) + newShortcode + val.substring(matchIndex + fullMatch.length);
+      textarea.selectionStart = textarea.selectionEnd = matchIndex + newShortcode.length;
+      textarea.focus();
+      popover.remove();
+
+      // Sync to main editor if in fullscreen
+      var mainEditor = document.getElementById(cfg.textareaId || 'gw-editor');
+      if (mainEditor && mainEditor !== textarea) {
+        mainEditor.value = textarea.value;
+      }
+    });
+  }
+
   function setupDrawShortcodeClick(textarea) {
     var drawBase = cfg.drawBasePath;
     if (!drawBase) return;
@@ -449,13 +524,12 @@
     textarea.addEventListener('dblclick', function() {
       var pos = textarea.selectionStart;
       var val = textarea.value;
-      // Find the shortcode surrounding the cursor
-      var re = /\[draw:([a-zA-Z0-9_-]+)(?::edit)?\]/g;
+      // Full shortcode regex: [draw:ID:edit:SIZE:zZOOM]
+      var re = /\[draw:([a-zA-Z0-9_-]+)(?::edit)?(?::([sml]))?(?::z([^\]]+))?\]/g;
       var match;
       while ((match = re.exec(val)) !== null) {
         if (pos >= match.index && pos <= match.index + match[0].length) {
-          var drawId = match[1];
-          window.open(drawBase + '/' + drawId + '/edit', '_blank');
+          showDrawEditPopover(textarea, match, match.index);
           return;
         }
       }
@@ -469,6 +543,7 @@
   // ---------------------------------------------------------------------------
   function initDrawEmbeds(container) {
     if (!container) return;
+    var drawBase = cfg.drawBasePath;
     var embeds = container.querySelectorAll('.godraw-embed:not(.godraw-preview-init)');
     for (var i = 0; i < embeds.length; i++) {
       var div = embeds[i];
@@ -477,21 +552,54 @@
       var h = div.getAttribute('data-height') || '520px';
       var zoom = div.getAttribute('data-zoom');
       if (!src) continue;
+
+      // Extract draw ID from src for the edit button
+      var drawIdMatch = src.match(/\/([a-zA-Z0-9_-]+?)(?:\/edit)?$/);
+      var drawId = drawIdMatch ? drawIdMatch[1] : null;
+
       // Preview always shows read-only view — strip /edit suffix
       src = src.replace(/\/edit$/, '');
       // Append zoom query param if present
       if (zoom) {
         src += (src.indexOf('?') === -1 ? '?' : '&') + 'zoom=' + encodeURIComponent(zoom);
       }
+
+      // Wrap in a positioned container for the edit overlay
+      var wrapper = document.createElement('div');
+      wrapper.className = 'gw-draw-preview-wrap';
+      wrapper.style.position = 'relative';
+      wrapper.style.display = 'inline-block';
+      wrapper.style.width = w;
+
       var iframe = document.createElement('iframe');
       iframe.src = src;
-      iframe.style.width = w;
+      iframe.style.width = '100%';
       iframe.style.height = h;
       iframe.style.border = 'none';
       iframe.style.borderRadius = '8px';
       iframe.setAttribute('loading', 'lazy');
+
+      wrapper.appendChild(iframe);
+
+      // Add "Edit" overlay button if we have a draw ID and base path
+      if (drawId && drawBase) {
+        var editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'gw-draw-preview-edit-btn';
+        editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> Edit';
+        editBtn.setAttribute('data-draw-id', drawId);
+        editBtn.addEventListener('click', (function(id) {
+          return function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(drawBase + '/' + id + '/edit', '_blank');
+          };
+        })(drawId));
+        wrapper.appendChild(editBtn);
+      }
+
       div.innerHTML = '';
-      div.appendChild(iframe);
+      div.appendChild(wrapper);
       div.classList.add('godraw-preview-init');
     }
   }
@@ -1111,6 +1219,162 @@
     return openModal;
   }
 
+  // ---------------------------------------------------------------------------
+  // Edit existing image — scan content for <figure> / ![](url), show modal
+  // ---------------------------------------------------------------------------
+  function setupEditImage(editor) {
+    function openEditImageModal() {
+      var content = editor.value || '';
+      var images = [];
+
+      // Match <figure> blocks with <img>
+      var figureRe = /<figure[^>]*>[\s\S]*?<img\s[^>]*src="([^"]+)"[^>]*?(?:alt="([^"]*)")?[\s\S]*?(?:<figcaption>([\s\S]*?)<\/figcaption>)?[\s\S]*?<\/figure>/g;
+      var m;
+      while ((m = figureRe.exec(content)) !== null) {
+        var alt = m[2] || '';
+        if (!alt) {
+          var altMatch = m[0].match(/alt="([^"]*)"/);
+          if (altMatch) alt = altMatch[1];
+        }
+        images.push({
+          html: m[0], url: m[1],
+          alt: alt.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'),
+          caption: (m[3] || '').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'),
+          index: m.index
+        });
+      }
+
+      // Match markdown images ![alt](url) not inside a <figure>
+      var mdRe = /!\[([^\]]*)\]\(([^)]+)\)/g;
+      while ((m = mdRe.exec(content)) !== null) {
+        var pos = m.index;
+        var insideFigure = images.some(function(img) { return pos >= img.index && pos < img.index + img.html.length; });
+        if (insideFigure) continue;
+        images.push({ html: m[0], url: m[2], alt: m[1], caption: '', index: m.index });
+      }
+
+      if (images.length === 0) {
+        alert('No images found in content');
+        return;
+      }
+
+      images.sort(function(a, b) { return a.index - b.index; });
+
+      // Remove any existing modal
+      var old = document.getElementById('gw-edit-img-modal');
+      if (old) old.remove();
+
+      var overlay = document.createElement('div');
+      overlay.id = 'gw-edit-img-modal';
+      overlay.className = 'gw-modal';
+      overlay.innerHTML =
+        '<div class="gw-modal-backdrop"></div>' +
+        '<div class="gw-image-modal-content">' +
+          '<div class="gw-modal-header">' +
+            '<span>Edit Image</span>' +
+            '<button type="button" class="gw-modal-close" id="gw-eim-close">&times;</button>' +
+          '</div>' +
+          '<div class="gw-modal-body" id="gw-eim-body"></div>' +
+          '<div id="gw-eim-edit-panel" class="gw-img-insert-panel gw-hidden"></div>' +
+        '</div>';
+
+      document.body.appendChild(overlay);
+
+      var body = overlay.querySelector('#gw-eim-body');
+      var editPanel = overlay.querySelector('#gw-eim-edit-panel');
+      var selectedImg = null;
+
+      function closeModal() { overlay.remove(); }
+      overlay.querySelector('.gw-modal-backdrop').addEventListener('click', closeModal);
+      overlay.querySelector('#gw-eim-close').addEventListener('click', closeModal);
+      document.addEventListener('keydown', function escHandler(e) {
+        if (e.key === 'Escape' && document.getElementById('gw-edit-img-modal')) {
+          closeModal();
+          document.removeEventListener('keydown', escHandler);
+        }
+      });
+
+      function showGrid() {
+        editPanel.classList.add('gw-hidden');
+        editPanel.innerHTML = '';
+        selectedImg = null;
+
+        var grid = document.createElement('div');
+        grid.className = 'gw-image-grid';
+        images.forEach(function(img) {
+          var card = document.createElement('div');
+          card.className = 'gw-img-card';
+          card.innerHTML = '<img src="' + img.url + '" alt="' + (img.alt || '') + '" loading="lazy"/>' +
+            '<span class="gw-img-name">' + (img.alt || 'No alt text') + '</span>';
+          card.addEventListener('click', function() { showEditForm(img); });
+          grid.appendChild(card);
+        });
+        body.innerHTML = '';
+        body.appendChild(grid);
+      }
+
+      function showEditForm(img) {
+        selectedImg = img;
+
+        // Detect current size
+        var curSize = 'l';
+        if (img.html.indexOf('<figure') === 0 || img.html.indexOf('\n<figure') === 0) {
+          if (/max-width:\s*50%/.test(img.html)) curSize = 's';
+          else if (/max-width:\s*75%/.test(img.html)) curSize = 'm';
+          else curSize = 'l';
+        }
+
+        editPanel.classList.remove('gw-hidden');
+        editPanel.innerHTML =
+          '<img id="gw-eim-thumb" src="' + img.url + '" alt="" class="gw-img-insert-thumb" />' +
+          '<div class="gw-img-insert-fields">' +
+            '<label class="gw-img-field-label">Alt text</label>' +
+            '<input type="text" id="gw-eim-alt" class="gw-img-input" value="' + (img.alt || '').replace(/"/g, '&quot;') + '" />' +
+            '<label class="gw-img-field-label">Caption <span style="color:#9ca3af">(optional)</span></label>' +
+            '<input type="text" id="gw-eim-caption" class="gw-img-input" value="' + (img.caption || '').replace(/"/g, '&quot;') + '" />' +
+            '<label class="gw-img-field-label">Size</label>' +
+            '<select id="gw-eim-size" class="gw-draw-select">' +
+              '<option value="s"' + (curSize === 's' ? ' selected' : '') + '>Small</option>' +
+              '<option value="m"' + (curSize === 'm' ? ' selected' : '') + '>Medium</option>' +
+              '<option value="l"' + (curSize === 'l' ? ' selected' : '') + '>Large</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="gw-img-insert-actions">' +
+            '<button type="button" class="gw-img-btn-cancel" id="gw-eim-back">Back</button>' +
+            '<button type="button" class="gw-img-btn-insert" id="gw-eim-save">Save</button>' +
+          '</div>';
+
+        editPanel.querySelector('#gw-eim-back').addEventListener('click', showGrid);
+        editPanel.querySelector('#gw-eim-save').addEventListener('click', function() {
+          if (!selectedImg) return;
+          var alt = editPanel.querySelector('#gw-eim-alt').value.trim();
+          var caption = editPanel.querySelector('#gw-eim-caption').value.trim();
+          var size = editPanel.querySelector('#gw-eim-size').value;
+          var newMarkup = buildImageMarkup(selectedImg.url, alt, caption, size);
+
+          if (editor._undoMgr) editor._undoMgr.checkpoint();
+          editor.value = editor.value.replace(selectedImg.html, newMarkup.trim());
+          editor.focus();
+
+          // Save metadata if endpoint available
+          saveImageMetadata(selectedImg.url, alt, caption);
+
+          // Sync to main editor if in fullscreen
+          var mainEditor = document.getElementById(cfg.textareaId || 'gw-editor');
+          if (mainEditor && mainEditor !== editor) {
+            mainEditor.value = editor.value;
+          }
+
+          closeModal();
+        });
+      }
+
+      showGrid();
+    }
+
+    return openEditImageModal;
+  }
+
   // Bind toolbar buttons on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', function() {
     var editor = getEditor();
@@ -1130,6 +1394,9 @@
 
     // Set up draw browser
     var openDrawBrowser = setupDrawBrowser(editor);
+
+    // Set up edit existing image
+    var openEditImage = setupEditImage(editor);
 
     // Toolbar button handlers
     var actions = {
@@ -1157,6 +1424,9 @@
       },
       'gw-draw':        function() {
         if (openDrawBrowser) openDrawBrowser();
+      },
+      'gw-edit-img':    function() {
+        if (openEditImage) openEditImage();
       }
     };
 
@@ -1218,6 +1488,7 @@
     buildImageMarkup: buildImageMarkup,
     uploadToCloudinary: uploadToCloudinary,
     saveImageMetadata: saveImageMetadata,
-    isCloudinaryConfigured: isCloudinaryConfigured
+    isCloudinaryConfigured: isCloudinaryConfigured,
+    setupEditImage: setupEditImage
   };
 })();

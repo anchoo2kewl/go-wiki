@@ -890,3 +890,76 @@
   border-color: rgba(239,68,68,0.2);
   color: #fca5a5;
 }
+
+/* Draw preview edit overlay button */
+.gw-draw-preview-wrap { position: relative; }
+.gw-draw-preview-edit-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 5;
+  backdrop-filter: blur(4px);
+}
+.gw-draw-preview-wrap:hover .gw-draw-preview-edit-btn { opacity: 1; }
+.gw-draw-preview-edit-btn:hover { background: rgba(99,102,241,0.85); }
+.gw-draw-preview-edit-btn svg { stroke: #fff; }
+
+/* Draw shortcode edit popover */
+.gw-draw-edit-popover {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+  padding: 14px 18px;
+  width: min(380px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dark .gw-draw-edit-popover {
+  background: #1e293b;
+  border-color: #334155;
+}
+.gw-draw-edit-popover-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+.dark .gw-draw-edit-popover-title { color: #e5e7eb; }
+.gw-draw-edit-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gw-draw-edit-popover-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  min-width: 40px;
+}
+.dark .gw-draw-edit-popover-label { color: #94a3b8; }
+.gw-draw-edit-popover-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}

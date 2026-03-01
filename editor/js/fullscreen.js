@@ -139,6 +139,12 @@
         var drawBtn = document.getElementById('gw-draw');
         if (drawBtn) drawBtn.click();
         break;
+      case 'edit-img':
+        if (gw.setupEditImage) {
+          var openEditImg = gw.setupEditImage(fsTextarea);
+          openEditImg();
+        }
+        break;
     }
     // Sync to main editor
     mainEditor.value = fsTextarea.value;
