@@ -153,6 +153,7 @@
     var endpoint = cfg.previewEndpoint;
     if (!endpoint) {
       container.innerHTML = convertFences(content);
+      initDrawEmbeds(container);
       return;
     }
 
@@ -169,6 +170,8 @@
     } catch(e) {
       container.innerHTML = convertFences(content);
     }
+
+    initDrawEmbeds(container);
 
     // Enhance with Prism if available
     if (window.Prism) Prism.highlightAllUnder(container);
@@ -300,6 +303,33 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Draw embed init — makes [draw:id:edit] previews work after innerHTML set
+  // Browsers ignore <script> tags injected via innerHTML, so embed.js never
+  // runs.  This scans for .godraw-embed divs and creates iframes directly.
+  // ---------------------------------------------------------------------------
+  function initDrawEmbeds(container) {
+    if (!container) return;
+    var embeds = container.querySelectorAll('.godraw-embed:not(.godraw-preview-init)');
+    for (var i = 0; i < embeds.length; i++) {
+      var div = embeds[i];
+      var src = div.getAttribute('data-src');
+      var w = div.getAttribute('data-width') || '100%';
+      var h = div.getAttribute('data-height') || '400px';
+      if (!src) continue;
+      var iframe = document.createElement('iframe');
+      iframe.src = src;
+      iframe.style.width = w;
+      iframe.style.height = h;
+      iframe.style.border = 'none';
+      iframe.style.borderRadius = '8px';
+      iframe.setAttribute('loading', 'lazy');
+      div.innerHTML = '';
+      div.appendChild(iframe);
+      div.classList.add('godraw-preview-init');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Image browser modal
   // ---------------------------------------------------------------------------
   function setupImageBrowser(editor) {
@@ -374,6 +404,150 @@
     return openModal;
   }
 
+  // ---------------------------------------------------------------------------
+  // Draw browser modal
+  // ---------------------------------------------------------------------------
+  function setupDrawBrowser(editor) {
+    var drawBase = cfg.drawBasePath;
+    if (!drawBase) return;
+
+    var modal = document.getElementById('gw-draw-modal');
+    var grid = document.getElementById('gw-draw-grid');
+    var closeBtn = document.getElementById('gw-draw-modal-close');
+    var newBtn = document.getElementById('gw-draw-modal-new');
+    var backdrop = modal && modal.querySelector('.gw-modal-backdrop');
+    if (!modal || !grid) return;
+
+    function closeModal() {
+      modal.classList.add('gw-hidden');
+    }
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (backdrop) backdrop.addEventListener('click', closeModal);
+
+    function formatDate(iso) {
+      try {
+        var d = new Date(iso);
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch(e) { return iso; }
+    }
+
+    function loadDrawings() {
+      grid.innerHTML = '<div class="gw-draw-loading">Loading drawings...</div>';
+      fetch(drawBase + '/api/list')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var drawings = data.drawings || [];
+          if (drawings.length === 0) {
+            grid.innerHTML = '<div class="gw-draw-empty">No drawings yet. Create one above!</div>';
+            return;
+          }
+          grid.innerHTML = '';
+          drawings.forEach(function(drw) {
+            var card = document.createElement('div');
+            card.className = 'gw-draw-card';
+
+            var title = document.createElement('div');
+            title.className = 'gw-draw-card-title';
+            title.textContent = drw.title || 'Untitled';
+            title.contentEditable = 'true';
+            title.spellcheck = false;
+
+            title.addEventListener('blur', function() {
+              var newTitle = title.textContent.trim();
+              if (!newTitle || newTitle === drw.title) {
+                title.textContent = drw.title || 'Untitled';
+                return;
+              }
+              fetch(drawBase + '/api/' + drw.id + '/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: newTitle })
+              }).then(function() { drw.title = newTitle; })
+                .catch(function() { title.textContent = drw.title || 'Untitled'; });
+            });
+
+            title.addEventListener('keydown', function(e) {
+              if (e.key === 'Enter') { e.preventDefault(); title.blur(); }
+              if (e.key === 'Escape') { title.textContent = drw.title || 'Untitled'; title.blur(); }
+            });
+
+            var meta = document.createElement('div');
+            meta.className = 'gw-draw-card-meta';
+            meta.textContent = formatDate(drw.updated_at);
+
+            var actions = document.createElement('div');
+            actions.className = 'gw-draw-card-actions';
+
+            var insertBtn = document.createElement('button');
+            insertBtn.type = 'button';
+            insertBtn.className = 'gw-draw-action-btn gw-draw-action-insert';
+            insertBtn.textContent = 'Insert';
+            insertBtn.addEventListener('click', function() {
+              insertAtCursor(editor, '\n[draw:' + drw.id + ':edit]\n');
+              closeModal();
+            });
+
+            var editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'gw-draw-action-btn gw-draw-action-edit';
+            editBtn.textContent = 'Edit';
+            editBtn.addEventListener('click', function() {
+              window.open(drawBase + '/' + drw.id + '/edit', '_blank');
+            });
+
+            var delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'gw-draw-action-btn gw-draw-action-delete';
+            delBtn.textContent = 'Delete';
+            delBtn.addEventListener('click', function() {
+              if (!confirm('Delete "' + (drw.title || 'Untitled') + '"?')) return;
+              fetch(drawBase + '/api/' + drw.id + '/delete', { method: 'POST' })
+                .then(function(res) {
+                  if (res.ok) card.remove();
+                  else alert('Failed to delete drawing');
+                })
+                .catch(function() { alert('Failed to delete drawing'); });
+            });
+
+            actions.appendChild(insertBtn);
+            actions.appendChild(editBtn);
+            actions.appendChild(delBtn);
+            card.appendChild(title);
+            card.appendChild(meta);
+            card.appendChild(actions);
+            grid.appendChild(card);
+          });
+        })
+        .catch(function() {
+          grid.innerHTML = '<div class="gw-draw-empty">Failed to load drawings</div>';
+        });
+    }
+
+    if (newBtn) {
+      newBtn.addEventListener('click', function() {
+        newBtn.disabled = true;
+        fetch(drawBase + '/api/new', { method: 'POST' })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data && data.id) {
+              var editUrl = data.edit_url || (drawBase + '/' + data.id + '/edit');
+              window.open(editUrl, '_blank');
+              loadDrawings();
+            }
+          })
+          .catch(function(err) { alert('Failed to create drawing: ' + err.message); })
+          .finally(function() { newBtn.disabled = false; });
+      });
+    }
+
+    function openModal() {
+      modal.classList.remove('gw-hidden');
+      loadDrawings();
+    }
+
+    return openModal;
+  }
+
   // Bind toolbar buttons on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', function() {
     var editor = getEditor();
@@ -390,6 +564,9 @@
 
     // Set up image browser
     var openImageBrowser = setupImageBrowser(editor);
+
+    // Set up draw browser
+    var openDrawBrowser = setupDrawBrowser(editor);
 
     // Toolbar button handlers
     var actions = {
@@ -416,25 +593,7 @@
         insertAtCursor(editor, '\n<more-->\n');
       },
       'gw-draw':        function() {
-        var drawBase = cfg.drawBasePath;
-        if (!drawBase) return;
-        var btn = document.getElementById('gw-draw');
-        if (btn) btn.disabled = true;
-        fetch(drawBase + '/api/new', { method: 'POST' })
-          .then(function(res) { return res.json(); })
-          .then(function(data) {
-            if (data && data.id) {
-              insertAtCursor(editor, '\n[draw:' + data.id + ':edit]\n');
-              var editUrl = data.edit_url || (drawBase + '/' + data.id + '/edit');
-              window.open(editUrl, '_blank');
-            }
-          })
-          .catch(function(err) {
-            alert('Failed to create drawing: ' + err.message);
-          })
-          .finally(function() {
-            if (btn) btn.disabled = false;
-          });
+        if (openDrawBrowser) openDrawBrowser();
       }
     };
 
@@ -491,6 +650,7 @@
     renderPreview: renderPreview,
     createUndoManager: createUndoManager,
     setupUploadZone: setupUploadZone,
-    setupDrawShortcodeClick: setupDrawShortcodeClick
+    setupDrawShortcodeClick: setupDrawShortcodeClick,
+    initDrawEmbeds: initDrawEmbeds
   };
 })();

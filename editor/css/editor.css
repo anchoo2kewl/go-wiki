@@ -360,3 +360,122 @@
   font-size: 14px;
 }
 .dark .gw-image-grid .gw-img-empty { color: #64748b; }
+
+/* Draw browser modal */
+.gw-draw-new-btn {
+  padding: .35rem .75rem;
+  border-radius: .5rem;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  transition: background 0.15s;
+}
+.gw-draw-new-btn:hover { background: #f3f4f6; }
+.gw-draw-new-btn:disabled { opacity: 0.5; cursor: default; }
+.dark .gw-draw-new-btn {
+  background: #1e293b;
+  border-color: #475569;
+  color: #e5e7eb;
+}
+.dark .gw-draw-new-btn:hover { background: #334155; }
+
+.gw-draw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.gw-draw-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s;
+}
+.gw-draw-card:hover { border-color: #6366f1; }
+.dark .gw-draw-card {
+  border-color: #334155;
+  background: #0f172a;
+}
+.dark .gw-draw-card:hover { border-color: #818cf8; }
+
+.gw-draw-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  outline: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gw-draw-card-title:focus {
+  border-color: #6366f1;
+  background: #f8fafc;
+}
+.dark .gw-draw-card-title { color: #e5e7eb; }
+.dark .gw-draw-card-title:focus {
+  border-color: #818cf8;
+  background: #1e293b;
+}
+
+.gw-draw-card-meta {
+  font-size: 12px;
+  color: #9ca3af;
+}
+.dark .gw-draw-card-meta { color: #64748b; }
+
+.gw-draw-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.gw-draw-action-btn {
+  padding: .25rem .6rem;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+.gw-draw-action-insert {
+  background: #1e1e2e;
+  color: #fff;
+}
+.gw-draw-action-insert:hover { background: #3b3b5c; }
+.dark .gw-draw-action-insert { background: #6366f1; }
+.dark .gw-draw-action-insert:hover { background: #818cf8; }
+
+.gw-draw-action-edit {
+  background: #f0f0f0;
+  color: #333;
+}
+.gw-draw-action-edit:hover { background: #e0e0e0; }
+.dark .gw-draw-action-edit { background: #1e293b; color: #e5e7eb; }
+.dark .gw-draw-action-edit:hover { background: #334155; }
+
+.gw-draw-action-delete {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.gw-draw-action-delete:hover { background: #fecaca; }
+.dark .gw-draw-action-delete { background: rgba(239,68,68,0.15); color: #f87171; }
+.dark .gw-draw-action-delete:hover { background: rgba(239,68,68,0.25); }
+
+.gw-draw-grid .gw-draw-loading,
+.gw-draw-grid .gw-draw-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #6b7280;
+  padding: 2rem;
+  font-size: 14px;
+}
+.dark .gw-draw-grid .gw-draw-loading,
+.dark .gw-draw-grid .gw-draw-empty { color: #94a3b8; }

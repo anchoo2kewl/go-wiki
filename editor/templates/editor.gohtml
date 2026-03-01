@@ -85,3 +85,22 @@
     </div>
   </div>
 </div>
+
+{{if .DrawBasePath}}
+<!-- Draw browser modal -->
+<div id="gw-draw-modal" class="gw-modal gw-hidden">
+  <div class="gw-modal-backdrop"></div>
+  <div class="gw-modal-content">
+    <div class="gw-modal-header">
+      <span>Drawings</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button type="button" class="gw-draw-new-btn" id="gw-draw-modal-new">+ New Drawing</button>
+        <button type="button" class="gw-modal-close" id="gw-draw-modal-close">&times;</button>
+      </div>
+    </div>
+    <div class="gw-modal-body">
+      <div class="gw-draw-grid" id="gw-draw-grid"></div>
+    </div>
+  </div>
+</div>
+{{end}}
