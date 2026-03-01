@@ -431,7 +431,19 @@
       } catch(e) { return iso; }
     }
 
+    function getUsedIds() {
+      var content = editor.value || '';
+      var used = {};
+      var re = /\[draw:([a-zA-Z0-9_-]+)/g;
+      var m;
+      while ((m = re.exec(content)) !== null) used[m[1]] = true;
+      return used;
+    }
+
     function loadDrawings() {
+      // Remove any existing cleanup bar
+      var oldCleanup = modal.querySelector('.gw-draw-cleanup');
+      if (oldCleanup) oldCleanup.remove();
       grid.innerHTML = '<div class="gw-draw-loading">Loading drawings...</div>';
       fetch(drawBase + '/api/list')
         .then(function(res) { return res.json(); })
@@ -442,9 +454,18 @@
             return;
           }
           grid.innerHTML = '';
+          var usedIds = getUsedIds();
+          var unusedIds = [];
+
           drawings.forEach(function(drw) {
+            var isUsed = !!usedIds[drw.id];
+            if (!isUsed) unusedIds.push(drw);
+
             var card = document.createElement('div');
-            card.className = 'gw-draw-card';
+            card.className = 'gw-draw-card' + (isUsed ? ' gw-draw-card-used' : '');
+
+            var titleRow = document.createElement('div');
+            titleRow.className = 'gw-draw-card-title-row';
 
             var title = document.createElement('div');
             title.className = 'gw-draw-card-title';
@@ -470,6 +491,15 @@
               if (e.key === 'Enter') { e.preventDefault(); title.blur(); }
               if (e.key === 'Escape') { title.textContent = drw.title || 'Untitled'; title.blur(); }
             });
+
+            titleRow.appendChild(title);
+
+            if (isUsed) {
+              var badge = document.createElement('span');
+              badge.className = 'gw-draw-badge-used';
+              badge.textContent = 'in use';
+              titleRow.appendChild(badge);
+            }
 
             var meta = document.createElement('div');
             meta.className = 'gw-draw-card-meta';
@@ -512,11 +542,37 @@
             actions.appendChild(insertBtn);
             actions.appendChild(editBtn);
             actions.appendChild(delBtn);
-            card.appendChild(title);
+            card.appendChild(titleRow);
             card.appendChild(meta);
             card.appendChild(actions);
             grid.appendChild(card);
           });
+
+          // Cleanup bar for unused drawings
+          if (unusedIds.length > 0) {
+            var cleanupBar = document.createElement('div');
+            cleanupBar.className = 'gw-draw-cleanup';
+            cleanupBar.innerHTML = '<span>' + unusedIds.length + ' unused drawing' + (unusedIds.length > 1 ? 's' : '') + '</span>';
+            var cleanupBtn = document.createElement('button');
+            cleanupBtn.type = 'button';
+            cleanupBtn.className = 'gw-draw-action-btn gw-draw-action-delete';
+            cleanupBtn.textContent = 'Delete all unused';
+            cleanupBtn.addEventListener('click', function() {
+              if (!confirm('Delete ' + unusedIds.length + ' unused drawing(s)? This cannot be undone.')) return;
+              cleanupBtn.disabled = true;
+              cleanupBtn.textContent = 'Deleting...';
+              Promise.all(unusedIds.map(function(drw) {
+                return fetch(drawBase + '/api/' + drw.id + '/delete', { method: 'POST' });
+              })).then(function() {
+                loadDrawings();
+              }).catch(function() {
+                alert('Some deletions failed');
+                loadDrawings();
+              });
+            });
+            cleanupBar.appendChild(cleanupBtn);
+            grid.parentNode.insertBefore(cleanupBar, grid);
+          }
         })
         .catch(function() {
           grid.innerHTML = '<div class="gw-draw-empty">Failed to load drawings</div>';

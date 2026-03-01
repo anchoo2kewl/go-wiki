@@ -479,3 +479,46 @@
 }
 .dark .gw-draw-grid .gw-draw-loading,
 .dark .gw-draw-grid .gw-draw-empty { color: #94a3b8; }
+
+/* Draw card title row + badge */
+.gw-draw-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.gw-draw-badge-used {
+  font-size: 10px;
+  font-weight: 600;
+  color: #16a34a;
+  background: rgba(22,163,74,0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.dark .gw-draw-badge-used {
+  color: #4ade80;
+  background: rgba(74,222,128,0.1);
+}
+.gw-draw-card-used { border-color: rgba(22,163,74,0.3); }
+.dark .gw-draw-card-used { border-color: rgba(74,222,128,0.2); }
+
+/* Cleanup bar */
+.gw-draw-cleanup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  font-size: 13px;
+  color: #991b1b;
+}
+.dark .gw-draw-cleanup {
+  background: rgba(239,68,68,0.08);
+  border-color: rgba(239,68,68,0.2);
+  color: #fca5a5;
+}
