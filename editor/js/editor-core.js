@@ -180,18 +180,31 @@
   // ---------------------------------------------------------------------------
   // Image markup builder (shared by image browser + drag-drop)
   // ---------------------------------------------------------------------------
-  function buildImageMarkup(url, alt, caption) {
+  function buildImageMarkup(url, alt, caption, size) {
     alt = alt || '';
     caption = (caption || '').trim();
-    if (caption) {
-      return '\n<figure style="text-align:center; margin: 1.5rem 0;">\n' +
-        '  <a href="' + url + '" data-lightbox="article-images" data-title="' + alt.replace(/"/g, '&quot;') + '">\n' +
-        '    <img src="' + url + '" alt="' + alt.replace(/"/g, '&quot;') + '" style="width:100%; height:auto; max-width:100%;" />\n' +
-        '  </a>\n' +
-        '  <figcaption>' + caption + '</figcaption>\n' +
-        '</figure>\n';
+    size = size || 'm';
+
+    var sizeStyles = {
+      s: 'max-width:50%; height:auto;',
+      m: 'max-width:75%; height:auto;',
+      l: 'width:100%; height:auto; max-width:100%;'
+    };
+    var imgStyle = sizeStyles[size] || sizeStyles.m;
+
+    // Large + no caption → plain markdown
+    if (size === 'l' && !caption) {
+      return '![' + alt + '](' + url + ')\n';
     }
-    return '![' + alt + '](' + url + ')\n';
+
+    // Otherwise use <figure>
+    var escapedAlt = alt.replace(/"/g, '&quot;');
+    return '\n<figure style="text-align:center; margin: 1.5rem 0;">\n' +
+      '  <a href="' + url + '" data-lightbox="article-images" data-title="' + escapedAlt + '">\n' +
+      '    <img src="' + url + '" alt="' + escapedAlt + '" style="' + imgStyle + '" />\n' +
+      '  </a>\n' +
+      (caption ? '  <figcaption>' + caption + '</figcaption>\n' : '') +
+      '</figure>\n';
   }
 
   // ---------------------------------------------------------------------------
@@ -297,6 +310,12 @@
           '<input type="text" class="gw-img-input" id="gw-toast-alt" value="' + defaultAlt.replace(/"/g, '&quot;') + '" />' +
           '<label class="gw-img-field-label">Caption <span style="color:#9ca3af">(optional)</span></label>' +
           '<input type="text" class="gw-img-input" id="gw-toast-caption" placeholder="Caption" />' +
+          '<label class="gw-img-field-label">Size</label>' +
+          '<select class="gw-draw-select" id="gw-toast-size">' +
+            '<option value="s">Small</option>' +
+            '<option value="m" selected>Medium</option>' +
+            '<option value="l">Large</option>' +
+          '</select>' +
         '</div>' +
       '</div>' +
       '<div class="gw-inline-upload-toast-actions">' +
@@ -320,6 +339,7 @@
     toast.querySelector('#gw-toast-upload').addEventListener('click', function() {
       var alt = altInput.value.trim();
       var caption = toast.querySelector('#gw-toast-caption').value.trim();
+      var size = (toast.querySelector('#gw-toast-size') || {}).value || 'm';
       var submitBtn = toast.querySelector('#gw-toast-upload');
       submitBtn.disabled = true;
       submitBtn.textContent = 'Uploading...';
@@ -330,7 +350,7 @@
           return saveImageMetadata(url, alt, caption).then(function() { return url; });
         })
         .then(function(url) {
-          insertAtCursor(textarea, buildImageMarkup(url, alt, caption));
+          insertAtCursor(textarea, buildImageMarkup(url, alt, caption, size));
           toast.remove();
         })
         .catch(function(err) {
@@ -572,9 +592,10 @@
         if (!selectedImage) return;
         var alt = (document.getElementById('gw-img-insert-alt') || {}).value || '';
         var caption = (document.getElementById('gw-img-insert-caption') || {}).value || '';
+        var size = (document.getElementById('gw-img-insert-size') || {}).value || 'm';
         // Save updated metadata
         saveImageMetadata(selectedImage.url, alt, caption);
-        insertAtCursor(editor, buildImageMarkup(selectedImage.url, alt, caption));
+        insertAtCursor(editor, buildImageMarkup(selectedImage.url, alt, caption, size));
         closeModal();
       });
     }
@@ -730,6 +751,7 @@
           if (!pendingFile) return;
           var alt = (altInput ? altInput.value.trim() : '') || '';
           var caption = (captionInput ? captionInput.value.trim() : '') || '';
+          var size = (document.getElementById('gw-img-upload-size') || {}).value || 'm';
           if (!alt) { alert('Alt text is required'); if (altInput) altInput.focus(); return; }
 
           submitBtn.disabled = true;
@@ -741,7 +763,7 @@
               return saveImageMetadata(url, alt, caption).then(function() { return url; });
             })
             .then(function(url) {
-              insertAtCursor(editor, buildImageMarkup(url, alt, caption));
+              insertAtCursor(editor, buildImageMarkup(url, alt, caption, size));
               // Add to allImages for immediate grid display
               allImages.unshift({ url: url, alt_text: alt, caption: caption, filename: pendingFile.name });
               pendingFile = null;
