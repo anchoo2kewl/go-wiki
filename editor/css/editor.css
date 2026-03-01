@@ -891,31 +891,60 @@
   color: #fca5a5;
 }
 
-/* Draw preview edit overlay button */
-.gw-draw-preview-wrap { position: relative; }
-.gw-draw-preview-edit-btn {
+/* Preview edit overlay bar (shared by draw + image) */
+.gw-draw-preview-wrap, .gw-img-preview-wrap { position: relative; }
+.gw-preview-edit-overlay {
   position: absolute;
   top: 8px;
   right: 8px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 10px;
-  border: none;
+  gap: 2px;
+  padding: 3px;
   border-radius: 6px;
   background: rgba(0,0,0,0.6);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
+  backdrop-filter: blur(4px);
   opacity: 0;
   transition: opacity 0.2s;
   z-index: 5;
-  backdrop-filter: blur(4px);
 }
-.gw-draw-preview-wrap:hover .gw-draw-preview-edit-btn { opacity: 1; }
-.gw-draw-preview-edit-btn:hover { background: rgba(99,102,241,0.85); }
-.gw-draw-preview-edit-btn svg { stroke: #fff; }
+.gw-draw-preview-wrap:hover .gw-preview-edit-overlay,
+.gw-img-preview-wrap:hover .gw-preview-edit-overlay { opacity: 1; }
+.gw-preview-size-btn {
+  padding: 3px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255,255,255,0.7);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.gw-preview-size-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.gw-preview-size-btn.active { background: rgba(99,102,241,0.8); color: #fff; }
+.gw-preview-overlay-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255,255,255,0.3);
+  margin: 0 2px;
+}
+.gw-preview-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255,255,255,0.7);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.gw-preview-edit-btn:hover { background: rgba(99,102,241,0.6); color: #fff; }
+.gw-preview-edit-btn svg { stroke: currentColor; }
 
 /* Draw shortcode edit popover */
 .gw-draw-edit-popover {

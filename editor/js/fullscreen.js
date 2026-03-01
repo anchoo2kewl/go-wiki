@@ -220,6 +220,7 @@
     }
 
     if (gw.initDrawEmbeds) gw.initDrawEmbeds(fsPreview);
+    if (gw.initImageEditOverlays) gw.initImageEditOverlays(fsPreview);
     if (window.Prism) Prism.highlightAllUnder(fsPreview);
     if (fsStatus) { fsStatus.textContent = 'Live'; fsStatus.classList.remove('rendering'); }
   }

@@ -154,6 +154,7 @@
     if (!endpoint) {
       container.innerHTML = convertFences(content);
       initDrawEmbeds(container);
+      initImageEditOverlays(container);
       return;
     }
 
@@ -172,6 +173,7 @@
     }
 
     initDrawEmbeds(container);
+    initImageEditOverlays(container);
 
     // Enhance with Prism if available
     if (window.Prism) Prism.highlightAllUnder(container);
@@ -537,9 +539,53 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Helpers for preview overlays
+  // ---------------------------------------------------------------------------
+  var drawSizeMap = {
+    s: { width: '50%', height: '300px' },
+    m: { width: '100%', height: '520px' },
+    l: { width: '100%', height: '720px' }
+  };
+
+  function getActiveTextarea() {
+    var fsOverlay = document.getElementById('gw-fullscreen-editor');
+    if (fsOverlay && !fsOverlay.classList.contains('gw-hidden')) {
+      return document.getElementById('gw-fullscreen-textarea');
+    }
+    return getEditor();
+  }
+
+  function syncTextareas(source) {
+    var mainEditor = getEditor();
+    var fsTa = document.getElementById('gw-fullscreen-textarea');
+    if (source === fsTa && mainEditor) mainEditor.value = fsTa.value;
+    else if (source === mainEditor && fsTa) fsTa.value = mainEditor.value;
+  }
+
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function createOverlayBar() {
+    var bar = document.createElement('div');
+    bar.className = 'gw-preview-edit-overlay';
+    return bar;
+  }
+
+  function createSizeBtn(sz, isActive) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'gw-preview-size-btn' + (isActive ? ' active' : '');
+    btn.textContent = sz.toUpperCase();
+    btn.setAttribute('data-size', sz);
+    return btn;
+  }
+
+  // ---------------------------------------------------------------------------
   // Draw embed init — makes [draw:id:edit] previews work after innerHTML set
   // Browsers ignore <script> tags injected via innerHTML, so embed.js never
   // runs.  This scans for .godraw-embed divs and creates iframes directly.
+  // Also adds size (S/M/L) + Edit overlay on hover.
   // ---------------------------------------------------------------------------
   function initDrawEmbeds(container) {
     if (!container) return;
@@ -553,18 +599,16 @@
       var zoom = div.getAttribute('data-zoom');
       if (!src) continue;
 
-      // Extract draw ID from src for the edit button
+      // Extract draw ID from src
       var drawIdMatch = src.match(/\/([a-zA-Z0-9_-]+?)(?:\/edit)?$/);
       var drawId = drawIdMatch ? drawIdMatch[1] : null;
 
       // Preview always shows read-only view — strip /edit suffix
       src = src.replace(/\/edit$/, '');
-      // Append zoom query param if present
       if (zoom) {
         src += (src.indexOf('?') === -1 ? '?' : '&') + 'zoom=' + encodeURIComponent(zoom);
       }
 
-      // Wrap in a positioned container for the edit overlay
       var wrapper = document.createElement('div');
       wrapper.className = 'gw-draw-preview-wrap';
       wrapper.style.position = 'relative';
@@ -578,29 +622,153 @@
       iframe.style.border = 'none';
       iframe.style.borderRadius = '8px';
       iframe.setAttribute('loading', 'lazy');
-
       wrapper.appendChild(iframe);
 
-      // Add "Edit" overlay button if we have a draw ID and base path
-      if (drawId && drawBase) {
-        var editBtn = document.createElement('button');
-        editBtn.type = 'button';
-        editBtn.className = 'gw-draw-preview-edit-btn';
-        editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> Edit';
-        editBtn.setAttribute('data-draw-id', drawId);
-        editBtn.addEventListener('click', (function(id) {
-          return function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            window.open(drawBase + '/' + id + '/edit', '_blank');
-          };
-        })(drawId));
-        wrapper.appendChild(editBtn);
+      // Add overlay bar with size buttons + Edit
+      if (drawId) {
+        // Detect current size from shortcode in textarea
+        var currentSize = 'm';
+        var textarea = getActiveTextarea();
+        if (textarea) {
+          var scRe = new RegExp('\\[draw:' + escapeRegExp(drawId) + '(?::edit)?(?::([sml]))?');
+          var scMatch = scRe.exec(textarea.value);
+          if (scMatch && scMatch[1]) currentSize = scMatch[1];
+        }
+
+        var overlay = createOverlayBar();
+
+        // Size buttons S/M/L
+        ['s', 'm', 'l'].forEach(function(sz) {
+          var btn = createSizeBtn(sz, sz === currentSize);
+          btn.addEventListener('click', (function(drawId, sz, wrapper, iframe, overlay) {
+            return function(e) {
+              e.preventDefault(); e.stopPropagation();
+              var ta = getActiveTextarea();
+              if (!ta) return;
+              // Find and update shortcode
+              var re = new RegExp('\\[draw:' + escapeRegExp(drawId) + '(?::edit)?(?::[sml])?(?::z[^\\]]+)?\\]');
+              var m = re.exec(ta.value);
+              if (!m) return;
+              var zoomMatch = m[0].match(/:z([^\]]+)/);
+              var zoomTag = zoomMatch ? ':z' + zoomMatch[1] : '';
+              var sizeTag = (sz === 'm') ? '' : ':' + sz;
+              var newSC = '[draw:' + drawId + ':edit' + sizeTag + zoomTag + ']';
+              if (ta._undoMgr) ta._undoMgr.checkpoint();
+              ta.value = ta.value.substring(0, m.index) + newSC + ta.value.substring(m.index + m[0].length);
+              syncTextareas(ta);
+              // Update visual
+              var dims = drawSizeMap[sz] || drawSizeMap.m;
+              wrapper.style.width = dims.width;
+              iframe.style.height = dims.height;
+              overlay.querySelectorAll('.gw-preview-size-btn').forEach(function(b) {
+                b.classList.toggle('active', b.getAttribute('data-size') === sz);
+              });
+            };
+          })(drawId, sz, wrapper, iframe, overlay));
+          overlay.appendChild(btn);
+        });
+
+        // Edit button
+        if (drawBase) {
+          var sep = document.createElement('span');
+          sep.className = 'gw-preview-overlay-sep';
+          overlay.appendChild(sep);
+
+          var editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'gw-preview-edit-btn';
+          editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> Edit';
+          editBtn.addEventListener('click', (function(id) {
+            return function(e) { e.preventDefault(); e.stopPropagation(); window.open(drawBase + '/' + id + '/edit', '_blank'); };
+          })(drawId));
+          overlay.appendChild(editBtn);
+        }
+
+        wrapper.appendChild(overlay);
       }
 
       div.innerHTML = '';
       div.appendChild(wrapper);
       div.classList.add('godraw-preview-init');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Image edit overlays — add S/M/L size controls to images in preview
+  // ---------------------------------------------------------------------------
+  function initImageEditOverlays(container) {
+    if (!container) return;
+    var images = container.querySelectorAll('img:not(.gw-preview-img-init)');
+    for (var i = 0; i < images.length; i++) {
+      var img = images[i];
+      // Skip images inside draw embeds or already-wrapped images
+      if (img.closest('.godraw-embed') || img.closest('.gw-draw-preview-wrap') || img.closest('.gw-img-preview-wrap')) continue;
+      var imgUrl = img.getAttribute('src');
+      if (!imgUrl) continue;
+
+      // Detect current size from inline style
+      var currentSize = 'l';
+      var styleStr = img.getAttribute('style') || '';
+      if (/max-width:\s*50%/.test(styleStr)) currentSize = 's';
+      else if (/max-width:\s*75%/.test(styleStr)) currentSize = 'm';
+
+      // Wrap the image (or its <figure> parent)
+      var wrapTarget = img.closest('figure') || img;
+      var wrapper = document.createElement('div');
+      wrapper.className = 'gw-img-preview-wrap';
+      wrapper.style.position = 'relative';
+      wrapper.style.display = 'inline-block';
+      wrapTarget.parentNode.insertBefore(wrapper, wrapTarget);
+      wrapper.appendChild(wrapTarget);
+
+      // Overlay bar with S/M/L
+      var overlay = createOverlayBar();
+      ['s', 'm', 'l'].forEach(function(sz) {
+        var btn = createSizeBtn(sz, sz === currentSize);
+        btn.addEventListener('click', (function(imgUrl, sz, img, overlay) {
+          return function(e) {
+            e.preventDefault(); e.stopPropagation();
+            var ta = getActiveTextarea();
+            if (!ta) return;
+            var content = ta.value;
+
+            // Try <figure> containing this URL
+            var figRe = new RegExp('<figure[^>]*>[\\s\\S]*?' + escapeRegExp(imgUrl) + '[\\s\\S]*?<\\/figure>');
+            var figMatch = figRe.exec(content);
+            if (figMatch) {
+              var altM = figMatch[0].match(/alt="([^"]*)"/);
+              var capM = figMatch[0].match(/<figcaption>([\s\S]*?)<\/figcaption>/);
+              var alt = altM ? altM[1].replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"') : '';
+              var cap = capM ? capM[1].replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"') : '';
+              var newMarkup = buildImageMarkup(imgUrl, alt, cap, sz);
+              if (ta._undoMgr) ta._undoMgr.checkpoint();
+              ta.value = content.replace(figMatch[0], newMarkup.trim());
+              syncTextareas(ta);
+            } else {
+              // Try markdown ![alt](url)
+              var mdRe = new RegExp('!\\[([^\\]]*)\\]\\(' + escapeRegExp(imgUrl) + '\\)');
+              var mdMatch = mdRe.exec(content);
+              if (mdMatch) {
+                var newMarkup = buildImageMarkup(imgUrl, mdMatch[1], '', sz);
+                if (ta._undoMgr) ta._undoMgr.checkpoint();
+                ta.value = content.replace(mdMatch[0], newMarkup.trim());
+                syncTextareas(ta);
+              }
+            }
+
+            // Update visual: change the img style
+            var sizeStyles = { s: 'max-width:50%; height:auto;', m: 'max-width:75%; height:auto;', l: 'width:100%; height:auto; max-width:100%;' };
+            img.setAttribute('style', sizeStyles[sz] || sizeStyles.m);
+            overlay.querySelectorAll('.gw-preview-size-btn').forEach(function(b) {
+              b.classList.toggle('active', b.getAttribute('data-size') === sz);
+            });
+          };
+        })(imgUrl, sz, img, overlay));
+        overlay.appendChild(btn);
+      });
+
+      wrapper.appendChild(overlay);
+      img.classList.add('gw-preview-img-init');
     }
   }
 
@@ -1485,6 +1653,7 @@
     setupUploadZone: setupUploadZone,
     setupDrawShortcodeClick: setupDrawShortcodeClick,
     initDrawEmbeds: initDrawEmbeds,
+    initImageEditOverlays: initImageEditOverlays,
     buildImageMarkup: buildImageMarkup,
     uploadToCloudinary: uploadToCloudinary,
     saveImageMetadata: saveImageMetadata,
