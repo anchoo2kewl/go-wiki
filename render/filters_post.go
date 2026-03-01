@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// drawShortcodeRe matches [draw:id], [draw:id:edit], [draw:id:s], [draw:id:edit:l] etc.
-// Captures: (1) drawing ID, (2) optional "edit", (3) optional size "s|m|l" (or long forms).
-var drawShortcodeRe = regexp.MustCompile(`(?i)\[draw:([a-z0-9][a-z0-9\-]{0,62})(?::(edit))?(?::(s|m|l|small|medium|large))?\]`)
+// drawShortcodeRe matches [draw:id], [draw:id:edit], [draw:id:edit:l], [draw:id:edit:l:zfit] etc.
+// Captures: (1) drawing ID, (2) optional "edit", (3) optional size, (4) optional zoom.
+var drawShortcodeRe = regexp.MustCompile(`(?i)\[draw:([a-z0-9][a-z0-9\-]{0,62})(?::(edit))?(?::(s|m|l|small|medium|large))?(?::z(fit|[0-9]+%?))?\]`)
 
 // Pre-compiled regexes (compiled once at startup)
 var (
@@ -162,6 +162,10 @@ func embedDraw(html string, basePath string) string {
 		if len(sub) >= 4 && sub[3] != "" {
 			size = sub[3]
 		}
+		zoom := ""
+		if len(sub) >= 5 && sub[4] != "" {
+			zoom = sub[4]
+		}
 		dims, ok := drawSizeMap[size]
 		if !ok {
 			dims = drawSizeMap["medium"]
@@ -170,10 +174,14 @@ func embedDraw(html string, basePath string) string {
 		if mode == "edit" {
 			src += "/edit"
 		}
+		zoomAttr := ""
+		if zoom != "" && zoom != "fit" {
+			zoomAttr = fmt.Sprintf(` data-zoom="%s"`, zoom)
+		}
 		return fmt.Sprintf(
-			`<div class="godraw-embed" data-src="%s" data-width="%s" data-height="%s" data-base-path="%s"></div>`+
+			`<div class="godraw-embed" data-src="%s" data-width="%s" data-height="%s" data-base-path="%s"%s></div>`+
 				`<script src="%s/static/embed.js"></script>`,
-			src, dims[0], dims[1], basePath, basePath,
+			src, dims[0], dims[1], basePath, zoomAttr, basePath,
 		)
 	})
 }

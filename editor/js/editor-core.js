@@ -315,9 +315,14 @@
       var src = div.getAttribute('data-src');
       var w = div.getAttribute('data-width') || '100%';
       var h = div.getAttribute('data-height') || '520px';
+      var zoom = div.getAttribute('data-zoom');
       if (!src) continue;
       // Preview always shows read-only view — strip /edit suffix
       src = src.replace(/\/edit$/, '');
+      // Append zoom query param if present
+      if (zoom) {
+        src += (src.indexOf('?') === -1 ? '?' : '&') + 'zoom=' + encodeURIComponent(zoom);
+      }
       var iframe = document.createElement('iframe');
       iframe.src = src;
       iframe.style.width = w;
@@ -420,11 +425,58 @@
     var backdrop = modal && modal.querySelector('.gw-modal-backdrop');
     if (!modal || !grid) return;
 
+    // SVG icons
+    var ICON_PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
+    var ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>';
+
     function closeModal() {
+      // Remove any confirm overlay when closing
+      var overlay = modal.querySelector('.gw-draw-confirm-overlay');
+      if (overlay) overlay.remove();
       modal.classList.add('gw-hidden');
     }
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
     if (backdrop) backdrop.addEventListener('click', closeModal);
+
+    // In-app confirmation dialog (replaces confirm())
+    function showConfirm(message, onConfirm) {
+      // Remove any existing overlay
+      var old = modal.querySelector('.gw-draw-confirm-overlay');
+      if (old) old.remove();
+
+      var overlay = document.createElement('div');
+      overlay.className = 'gw-draw-confirm-overlay';
+      var box = document.createElement('div');
+      box.className = 'gw-draw-confirm-box';
+      var msg = document.createElement('div');
+      msg.className = 'gw-draw-confirm-msg';
+      msg.textContent = message;
+      var actions = document.createElement('div');
+      actions.className = 'gw-draw-confirm-actions';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'gw-draw-confirm-cancel';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', function() { overlay.remove(); });
+      var confirmBtn = document.createElement('button');
+      confirmBtn.type = 'button';
+      confirmBtn.className = 'gw-draw-confirm-delete';
+      confirmBtn.textContent = 'Delete';
+      confirmBtn.addEventListener('click', function() {
+        overlay.remove();
+        onConfirm();
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(confirmBtn);
+      box.appendChild(msg);
+      box.appendChild(actions);
+      overlay.appendChild(box);
+      // Clicking overlay backdrop cancels
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+      });
+      modal.querySelector('.gw-modal-content').appendChild(overlay);
+    }
 
     function formatDate(iso) {
       try {
@@ -440,6 +492,12 @@
       var m;
       while ((m = re.exec(content)) !== null) used[m[1]] = true;
       return used;
+    }
+
+    function buildShortcode(id, size, zoom) {
+      var sizeTag = (!size || size === 'm') ? '' : ':' + size;
+      var zoomTag = (!zoom || zoom === 'fit') ? '' : ':z' + zoom;
+      return '\n[draw:' + id + ':edit' + sizeTag + zoomTag + ']\n';
     }
 
     function loadDrawings() {
@@ -510,59 +568,79 @@
             var actions = document.createElement('div');
             actions.className = 'gw-draw-card-actions';
 
-            var sizes = [
-              { label: 'S', size: 's', title: 'Small' },
-              { label: 'M', size: 'm', title: 'Medium' },
-              { label: 'L', size: 'l', title: 'Large' }
-            ];
-            var insertGroup = document.createElement('span');
-            insertGroup.className = 'gw-draw-insert-group';
-            var insertLabel = document.createElement('span');
-            insertLabel.className = 'gw-draw-insert-label';
-            insertLabel.textContent = 'Insert';
-            insertGroup.appendChild(insertLabel);
-            sizes.forEach(function(s) {
-              var btn = document.createElement('button');
-              btn.type = 'button';
-              btn.className = 'gw-draw-action-btn gw-draw-action-insert gw-draw-size-btn';
-              btn.textContent = s.label;
-              btn.title = s.title;
-              btn.addEventListener('click', function() {
-                var sizeTag = s.size === 'm' ? '' : ':' + s.size;
-                insertAtCursor(editor, '\n[draw:' + drw.id + ':edit' + sizeTag + ']\n');
-                closeModal();
-              });
-              insertGroup.appendChild(btn);
+            // Size dropdown
+            var sizeSelect = document.createElement('select');
+            sizeSelect.className = 'gw-draw-select';
+            sizeSelect.title = 'Size';
+            [['s','S'],['m','M'],['l','L']].forEach(function(pair) {
+              var opt = document.createElement('option');
+              opt.value = pair[0];
+              opt.textContent = pair[1];
+              if (pair[0] === 'm') opt.selected = true;
+              sizeSelect.appendChild(opt);
             });
 
+            // Zoom dropdown
+            var zoomSelect = document.createElement('select');
+            zoomSelect.className = 'gw-draw-select';
+            zoomSelect.title = 'Zoom';
+            [['fit','fit'],['50%','50%'],['100%','100%'],['150%','150%'],['200%','200%']].forEach(function(pair) {
+              var opt = document.createElement('option');
+              opt.value = pair[0];
+              opt.textContent = pair[1];
+              if (pair[0] === 'fit') opt.selected = true;
+              zoomSelect.appendChild(opt);
+            });
+
+            // Edit icon button
             var editBtn = document.createElement('button');
             editBtn.type = 'button';
-            editBtn.className = 'gw-draw-action-btn gw-draw-action-edit';
-            editBtn.textContent = 'Edit';
-            editBtn.addEventListener('click', function() {
+            editBtn.className = 'gw-draw-icon-btn gw-draw-icon-edit';
+            editBtn.title = 'Edit drawing';
+            editBtn.innerHTML = ICON_PENCIL;
+            editBtn.addEventListener('click', function(e) {
+              e.stopPropagation();
               window.open(drawBase + '/' + drw.id + '/edit', '_blank');
             });
 
+            // Delete icon button
             var delBtn = document.createElement('button');
             delBtn.type = 'button';
-            delBtn.className = 'gw-draw-action-btn gw-draw-action-delete';
-            delBtn.textContent = 'Delete';
-            delBtn.addEventListener('click', function() {
-              if (!confirm('Delete "' + (drw.title || 'Untitled') + '"?')) return;
-              fetch(drawBase + '/api/' + drw.id + '/delete', { method: 'POST' })
-                .then(function(res) {
-                  if (res.ok) card.remove();
-                  else alert('Failed to delete drawing');
-                })
-                .catch(function() { alert('Failed to delete drawing'); });
+            delBtn.className = 'gw-draw-icon-btn gw-draw-icon-delete';
+            delBtn.title = 'Delete drawing';
+            delBtn.innerHTML = ICON_TRASH;
+            delBtn.addEventListener('click', function(e) {
+              e.stopPropagation();
+              showConfirm('Delete "' + (drw.title || 'Untitled') + '"?', function() {
+                fetch(drawBase + '/api/' + drw.id + '/delete', { method: 'POST' })
+                  .then(function(res) {
+                    if (res.ok) card.remove();
+                    else alert('Failed to delete drawing');
+                  })
+                  .catch(function() { alert('Failed to delete drawing'); });
+              });
             });
 
-            actions.appendChild(insertGroup);
+            actions.appendChild(sizeSelect);
+            actions.appendChild(zoomSelect);
             actions.appendChild(editBtn);
             actions.appendChild(delBtn);
+
             card.appendChild(titleRow);
             card.appendChild(meta);
             card.appendChild(actions);
+
+            // Click card to insert (excluding title, selects, buttons)
+            card.addEventListener('click', function(e) {
+              var tag = e.target.tagName;
+              if (tag === 'SELECT' || tag === 'OPTION' || tag === 'BUTTON' || tag === 'SVG' || tag === 'PATH' || tag === 'POLYLINE') return;
+              if (e.target.isContentEditable) return;
+              if (e.target.closest('.gw-draw-icon-btn') || e.target.closest('select')) return;
+              var shortcode = buildShortcode(drw.id, sizeSelect.value, zoomSelect.value);
+              insertAtCursor(editor, shortcode);
+              closeModal();
+            });
+
             grid.appendChild(card);
           });
 
@@ -576,16 +654,17 @@
             cleanupBtn.className = 'gw-draw-action-btn gw-draw-action-delete';
             cleanupBtn.textContent = 'Delete all unused';
             cleanupBtn.addEventListener('click', function() {
-              if (!confirm('Delete ' + unusedIds.length + ' unused drawing(s)? This cannot be undone.')) return;
-              cleanupBtn.disabled = true;
-              cleanupBtn.textContent = 'Deleting...';
-              Promise.all(unusedIds.map(function(drw) {
-                return fetch(drawBase + '/api/' + drw.id + '/delete', { method: 'POST' });
-              })).then(function() {
-                loadDrawings();
-              }).catch(function() {
-                alert('Some deletions failed');
-                loadDrawings();
+              showConfirm('Delete ' + unusedIds.length + ' unused drawing(s)? This cannot be undone.', function() {
+                cleanupBtn.disabled = true;
+                cleanupBtn.textContent = 'Deleting...';
+                Promise.all(unusedIds.map(function(drw) {
+                  return fetch(drawBase + '/api/' + drw.id + '/delete', { method: 'POST' });
+                })).then(function() {
+                  loadDrawings();
+                }).catch(function() {
+                  alert('Some deletions failed');
+                  loadDrawings();
+                });
               });
             });
             cleanupBar.appendChild(cleanupBtn);

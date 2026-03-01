@@ -394,14 +394,15 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, background 0.15s;
+  cursor: pointer;
 }
-.gw-draw-card:hover { border-color: #6366f1; }
+.gw-draw-card:hover { border-color: #6366f1; background: #f8fafc; }
 .dark .gw-draw-card {
   border-color: #334155;
   background: #0f172a;
 }
-.dark .gw-draw-card:hover { border-color: #818cf8; }
+.dark .gw-draw-card:hover { border-color: #818cf8; background: #1e293b; }
 
 .gw-draw-card-title {
   font-size: 14px;
@@ -461,25 +462,110 @@
 .dark .gw-draw-action-edit { background: #1e293b; color: #e5e7eb; }
 .dark .gw-draw-action-edit:hover { background: #334155; }
 
-/* Insert group (S M L buttons) */
-.gw-draw-insert-group {
+/* Draw card select dropdowns */
+.gw-draw-select {
+  padding: 2px 4px;
+  border-radius: 5px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  outline: none;
+}
+.gw-draw-select:hover { border-color: #6366f1; }
+.gw-draw-select:focus { border-color: #6366f1; box-shadow: 0 0 0 1px rgba(99,102,241,0.3); }
+.dark .gw-draw-select {
+  background: #1e293b;
+  border-color: #475569;
+  color: #e5e7eb;
+}
+.dark .gw-draw-select:hover { border-color: #818cf8; }
+.dark .gw-draw-select:focus { border-color: #818cf8; box-shadow: 0 0 0 1px rgba(129,140,248,0.3); }
+
+/* Draw card icon buttons (edit/delete) */
+.gw-draw-icon-btn {
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s;
 }
-.gw-draw-insert-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #6b7280;
-  margin-right: 2px;
+.gw-draw-icon-btn svg { width: 14px; height: 14px; }
+.gw-draw-icon-edit { background: #f0f0f0; color: #555; }
+.gw-draw-icon-edit:hover { background: #e0e0e0; color: #333; }
+.dark .gw-draw-icon-edit { background: #1e293b; color: #94a3b8; }
+.dark .gw-draw-icon-edit:hover { background: #334155; color: #e5e7eb; }
+.gw-draw-icon-delete { background: #fee2e2; color: #dc2626; }
+.gw-draw-icon-delete:hover { background: #fecaca; color: #b91c1c; }
+.dark .gw-draw-icon-delete { background: rgba(239,68,68,0.15); color: #f87171; }
+.dark .gw-draw-icon-delete:hover { background: rgba(239,68,68,0.25); color: #fca5a5; }
+
+/* In-app confirmation overlay (inside modal) */
+.gw-draw-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(2px);
+  border-radius: 12px;
 }
-.dark .gw-draw-insert-label { color: #9ca3af; }
-.gw-draw-size-btn {
-  min-width: 24px;
+.gw-draw-confirm-box {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px 24px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+  max-width: 340px;
   text-align: center;
-  padding: .25rem .35rem;
-  font-size: 11px;
 }
+.dark .gw-draw-confirm-box {
+  background: #1e293b;
+  border: 1px solid #334155;
+}
+.gw-draw-confirm-msg {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  margin-bottom: 16px;
+}
+.dark .gw-draw-confirm-msg { color: #e5e7eb; }
+.gw-draw-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.gw-draw-confirm-cancel {
+  padding: .35rem .75rem;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+}
+.gw-draw-confirm-cancel:hover { background: #f3f4f6; }
+.dark .gw-draw-confirm-cancel { background: #1e293b; border-color: #475569; color: #e5e7eb; }
+.dark .gw-draw-confirm-cancel:hover { background: #334155; }
+.gw-draw-confirm-delete {
+  padding: .35rem .75rem;
+  border-radius: 6px;
+  border: none;
+  background: #dc2626;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.gw-draw-confirm-delete:hover { background: #b91c1c; }
 
 .gw-draw-action-delete {
   background: #fee2e2;
