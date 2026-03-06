@@ -36,6 +36,7 @@ type Wiki struct {
 	cloudinaryCloudName         string
 	enableMore                  bool
 	fullscreen                  bool
+	enableAnnotations           bool
 }
 
 // New creates a Wiki with the given options. Defaults: all rendering features
@@ -94,9 +95,17 @@ func (w *Wiki) EditorHTML(content string) (template.HTML, error) {
 		EnableFullscreen:            w.fullscreen,
 		EnableImageUpload:           w.uploadEndpoint != "",
 		EnableMore:                  w.enableMore,
+		EnableAnnotations:           w.enableAnnotations,
 		TextareaName:                "content",
 		InitialContent:              content,
 		DrawBasePath:                w.rendererOpts.DrawBasePath,
 	}
 	return editor.RenderEditor(cfg)
+}
+
+// AnnotationsJS returns the standalone annotations JavaScript module source.
+// Serve this to your frontend (e.g. at /wiki/annotations.js) so React/SPA
+// consumers can call window.GoWikiAnnotations.attach() and .apply().
+func AnnotationsJS() string {
+	return editor.AnnotationsJS()
 }

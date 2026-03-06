@@ -81,6 +81,16 @@ func WithCloudinaryCloudName(cloudName string) Option {
 	}
 }
 
+// WithAnnotations enables text annotation/highlighting support.
+// When used with EditorHTML, annotations.js is inlined into the editor.
+// For React/SPA consumers, use AnnotationsJS() to serve the module separately
+// and call window.GoWikiAnnotations.attach() / .apply() in your component.
+func WithAnnotations() Option {
+	return func(w *Wiki) {
+		w.enableAnnotations = true
+	}
+}
+
 // WithDrawBasePath enables go-draw embed support and sets the URL prefix
 // for go-draw routes (e.g. "/draw"). When set, [draw:id] and [draw:id:edit]
 // shortcodes in markdown are rendered as resizable go-draw iframe embeds.

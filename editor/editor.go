@@ -16,6 +16,7 @@ type EditorConfig struct {
 	EnableFullscreen            bool   // default: true
 	EnableImageUpload           bool   // default: false
 	EnableMore                  bool   // default: false; if true, a "More" button inserts <more-->
+	EnableAnnotations           bool   // default: false; if true, annotations.js is inlined (exposes window.GoWikiAnnotations)
 	DarkMode                    bool   // default: true (consumer controls via CSS class on <body>)
 	TextareaName                string // form field name, default: "content"
 	InitialContent              string // pre-filled content for the textarea
@@ -155,6 +156,12 @@ func RenderEditor(cfg EditorConfig) (template.HTML, error) {
 		buf.WriteString("\n")
 		buf.Write(js)
 	}
+	if cfg.EnableAnnotations {
+		if js, err := readEmbedded("js/annotations.js"); err == nil {
+			buf.WriteString("\n")
+			buf.Write(js)
+		}
+	}
 	if cfg.ExtraJS != "" {
 		buf.WriteString("\n")
 		buf.WriteString(cfg.ExtraJS)
@@ -197,6 +204,16 @@ func JS(includeFullscreen bool) string {
 		buf.Write(js)
 	}
 	return buf.String()
+}
+
+// AnnotationsJS returns the standalone annotations JavaScript module source.
+// Serve this to your frontend (e.g. at /wiki/annotations.js) to enable
+// the go-wiki text annotation API (window.GoWikiAnnotations).
+// This is independent of EditorHTML — use it when embedding the editor
+// in a React/Vue/Svelte app that manages annotations externally.
+func AnnotationsJS() string {
+	js, _ := readEmbedded("js/annotations.js")
+	return string(js)
 }
 
 func readEmbedded(path string) ([]byte, error) {
