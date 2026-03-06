@@ -109,3 +109,11 @@ func (w *Wiki) EditorHTML(content string) (template.HTML, error) {
 func AnnotationsJS() string {
 	return editor.AnnotationsJS()
 }
+
+// MermaidInitJS returns the standalone mermaid init JavaScript source.
+// Serve this alongside mermaid.js so wiki HTML containing <div class="mermaid">
+// gets rendered as diagrams. Call window.GoWikiMermaid.run(rootEl) after
+// injecting wiki HTML into the DOM.
+func MermaidInitJS() string {
+	return editor.MermaidInitJS()
+}

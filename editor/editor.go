@@ -17,6 +17,7 @@ type EditorConfig struct {
 	EnableImageUpload           bool   // default: false
 	EnableMore                  bool   // default: false; if true, a "More" button inserts <more-->
 	EnableAnnotations           bool   // default: false; if true, annotations.js is inlined (exposes window.GoWikiAnnotations)
+	EnableMermaid               bool   // default: false; if true, mermaid-init.js is inlined (exposes window.GoWikiMermaid)
 	DarkMode                    bool   // default: true (consumer controls via CSS class on <body>)
 	TextareaName                string // form field name, default: "content"
 	InitialContent              string // pre-filled content for the textarea
@@ -162,6 +163,12 @@ func RenderEditor(cfg EditorConfig) (template.HTML, error) {
 			buf.Write(js)
 		}
 	}
+	if cfg.EnableMermaid {
+		if js, err := readEmbedded("js/mermaid-init.js"); err == nil {
+			buf.WriteString("\n")
+			buf.Write(js)
+		}
+	}
 	if cfg.ExtraJS != "" {
 		buf.WriteString("\n")
 		buf.WriteString(cfg.ExtraJS)
@@ -213,6 +220,15 @@ func JS(includeFullscreen bool) string {
 // in a React/Vue/Svelte app that manages annotations externally.
 func AnnotationsJS() string {
 	js, _ := readEmbedded("js/annotations.js")
+	return string(js)
+}
+
+// MermaidInitJS returns the standalone mermaid init JavaScript source.
+// Serve this to your frontend (e.g. at /mermaid-init.js) alongside
+// mermaid.js (https://mermaid.js.org/) to enable diagram rendering in wiki content.
+// Exposes window.GoWikiMermaid.run(rootEl) — call it after injecting wiki HTML.
+func MermaidInitJS() string {
+	js, _ := readEmbedded("js/mermaid-init.js")
 	return string(js)
 }
 
