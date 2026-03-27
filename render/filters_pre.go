@@ -55,6 +55,7 @@ var (
 	referenceDefRe  = regexp.MustCompile(`(?m)^\[\^(\d+)\]:\s+(.+)$`)
 	referenceCiteRe = regexp.MustCompile(`\[\^(\d+)\]`)
 	inlineCodeRe    = regexp.MustCompile("`[^`]+`")
+	mdLinkRe        = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 )
 
 // normalizeWhitespaceAndBreaks converts NBSP, line breaks, <br> tags to \n.
@@ -317,9 +318,11 @@ func processReferences(content string) string {
 		sb.WriteString("<ol style=\"list-style-type:decimal;padding-left:1.5rem;font-size:0.9em;line-height:1.6\">\n")
 		for _, n := range order {
 			ns := itoa(n)
+			// Convert markdown links [text](url) → <a href="url">text</a> in definition text.
+			defHTML := mdLinkRe.ReplaceAllString(defs[n], `<a href="$2" style="color:#3b82f6" target="_blank" rel="noopener">$1</a>`)
 			sb.WriteString(fmt.Sprintf(
 				"<li id=\"gw-ref-%s\" style=\"margin-bottom:0.25rem\"><a href=\"#gw-cite-%s\" style=\"color:#3b82f6;text-decoration:none;margin-right:0.25rem\" title=\"Back to text\">↩</a>%s</li>\n",
-				ns, ns, defs[n],
+				ns, ns, defHTML,
 			))
 		}
 		sb.WriteString("</ol>\n</section>\n")

@@ -536,6 +536,21 @@ func TestReferences(t *testing.T) {
 		}
 	})
 
+	t.Run("markdown links in definitions become clickable", func(t *testing.T) {
+		input := "Claim[^1].\n\n[^1]: MSCI — [Full Report](https://example.com/report) (May 2025)"
+		output := r.Render(input)
+
+		if !strings.Contains(output, `<a href="https://example.com/report"`) {
+			t.Error("Expected markdown link converted to <a> tag in reference definition")
+		}
+		if !strings.Contains(output, `>Full Report</a>`) {
+			t.Error("Expected link text 'Full Report' in anchor tag")
+		}
+		if strings.Contains(output, `[Full Report](https://example.com/report)`) {
+			t.Error("Raw markdown link should not appear in output")
+		}
+	})
+
 	t.Run("references section has heading", func(t *testing.T) {
 		input := "Claim[^1].\n\n[^1]: Source"
 		output := r.Render(input)
