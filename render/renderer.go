@@ -17,6 +17,7 @@ type RendererOptions struct {
 	ProtectInlineCSS     bool   // strip one-line CSS outsiders pasted accidentally
 	EnableDrawEmbeds     bool   // turn [draw:id] shortcodes into go-draw iframes
 	DrawBasePath         string // URL prefix for go-draw (e.g. "/draw"), required when EnableDrawEmbeds is true
+	EnableReferences     bool   // turn [^N] / [^N]: text into superscript citations with a reference list
 }
 
 // ClassConfig allows consumers to override the default CSS classes
@@ -49,6 +50,7 @@ func DefaultOptions() RendererOptions {
 		EnableMermaid:        true,
 		ProtectInlineCSS:     true,
 		EnableDrawEmbeds:     false, // opt-in; requires DrawBasePath
+		EnableReferences:     true,
 	}
 }
 
@@ -110,6 +112,9 @@ func (r *Renderer) RenderWithDebug(content string, includeStages bool) (string, 
 	s = preprocessLooseMarkdownHTML(s)
 	s = normalizeInlinePipeTables(s)
 	s = convertFences(s)
+	if r.Opt.EnableReferences {
+		s = processReferences(s)
+	}
 	s = stage("04_preprocessed", s)
 
 	// --- MARKDOWN ---

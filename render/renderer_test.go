@@ -433,6 +433,122 @@ func TestCustomClassConfig(t *testing.T) {
 	})
 }
 
+func TestReferences(t *testing.T) {
+	r := NewRenderer(DefaultOptions())
+
+	t.Run("basic citation and definition", func(t *testing.T) {
+		input := "See this claim[^1] for details.\n\n[^1]: Knuth, The Art of Computer Programming, 1968"
+		output := r.Render(input)
+
+		// Inline citation should be superscript with link
+		if !strings.Contains(output, `<sup>`) {
+			t.Error("Expected <sup> tag for citation")
+		}
+		if !strings.Contains(output, `href="#gw-ref-1"`) {
+			t.Error("Expected href to #gw-ref-1")
+		}
+		if !strings.Contains(output, `[1]</a></sup>`) {
+			t.Error("Expected [1] as link text in superscript")
+		}
+		if !strings.Contains(output, `style="color:#3b82f6`) {
+			t.Error("Expected blue color style")
+		}
+
+		// Reference list should appear
+		if !strings.Contains(output, `id="gw-ref-1"`) {
+			t.Error("Expected reference anchor id gw-ref-1")
+		}
+		if !strings.Contains(output, `Knuth, The Art of Computer Programming`) {
+			t.Error("Expected reference text in output")
+		}
+		if !strings.Contains(output, `class="gowiki-references"`) {
+			t.Error("Expected gowiki-references section")
+		}
+		// Back-link
+		if !strings.Contains(output, `href="#gw-cite-1"`) {
+			t.Error("Expected back-link to gw-cite-1")
+		}
+	})
+
+	t.Run("multiple references", func(t *testing.T) {
+		input := "First[^1] and second[^2].\n\n[^1]: Reference one\n[^2]: Reference two"
+		output := r.Render(input)
+
+		if !strings.Contains(output, `[1]</a></sup>`) {
+			t.Error("Expected [1] citation")
+		}
+		if !strings.Contains(output, `[2]</a></sup>`) {
+			t.Error("Expected [2] citation")
+		}
+		if !strings.Contains(output, `id="gw-ref-1"`) {
+			t.Error("Expected gw-ref-1 anchor")
+		}
+		if !strings.Contains(output, `id="gw-ref-2"`) {
+			t.Error("Expected gw-ref-2 anchor")
+		}
+		if !strings.Contains(output, "Reference one") {
+			t.Error("Expected 'Reference one'")
+		}
+		if !strings.Contains(output, "Reference two") {
+			t.Error("Expected 'Reference two'")
+		}
+	})
+
+	t.Run("citation inside inline code is not converted", func(t *testing.T) {
+		input := "Use `[^1]` syntax for references.\n\n[^1]: Some ref"
+		output := r.Render(input)
+
+		// The inline code should contain literal [^1]
+		if !strings.Contains(output, "<code>") {
+			t.Error("Expected code tag")
+		}
+	})
+
+	t.Run("no references does nothing", func(t *testing.T) {
+		input := "Just a normal paragraph."
+		output := r.Render(input)
+
+		if strings.Contains(output, "gowiki-references") {
+			t.Error("Expected no reference section for content without references")
+		}
+	})
+
+	t.Run("references disabled", func(t *testing.T) {
+		opts := DefaultOptions()
+		opts.EnableReferences = false
+		noRefRenderer := NewRenderer(opts)
+
+		input := "Claim[^1].\n\n[^1]: Source"
+		output := noRefRenderer.Render(input)
+
+		if strings.Contains(output, "gowiki-references") {
+			t.Error("Expected no reference processing when disabled")
+		}
+	})
+
+	t.Run("definition removed from body", func(t *testing.T) {
+		input := "Text[^1].\n\n[^1]: My source reference"
+		output := r.Render(input)
+
+		// The raw definition line should not appear as a paragraph
+		if strings.Contains(output, "[^1]: My source reference") {
+			t.Error("Expected raw definition line to be removed from body")
+		}
+	})
+
+	t.Run("references section has heading", func(t *testing.T) {
+		input := "Claim[^1].\n\n[^1]: Source"
+		output := r.Render(input)
+
+		if !strings.Contains(output, `id="references"`) {
+			t.Error("Expected references heading with id")
+		}
+		if !strings.Contains(output, ">References<") {
+			t.Error("Expected 'References' heading text")
+		}
+	})
+}
+
 func BenchmarkRender(b *testing.B) {
 	r := NewRenderer(DefaultOptions())
 	input := `# Heading

@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -49,6 +50,11 @@ var (
 
 	// cleanStyleHeader
 	reCleanStylePreCode = regexp.MustCompile(`^pre\s+code\s*\{[^}]*\}\s*$`)
+
+	// references
+	referenceDefRe  = regexp.MustCompile(`(?m)^\[\^(\d+)\]:\s+(.+)$`)
+	referenceCiteRe = regexp.MustCompile(`\[\^(\d+)\]`)
+	inlineCodeRe    = regexp.MustCompile("`[^`]+`")
 )
 
 // normalizeWhitespaceAndBreaks converts NBSP, line breaks, <br> tags to \n.
@@ -245,4 +251,94 @@ func processBlockquotes(content string) string {
 		flush()
 	}
 	return strings.Join(out, "\n")
+}
+
+// processReferences converts [^N] inline citations to superscript links and
+// [^N]: text definitions into a reference list appended at the end.
+//
+// Syntax:
+//
+//	Inline:     [^1]  →  <sup><a href="#gw-ref-1">[1]</a></sup>  (blue, superscript)
+//	Definition: [^1]: Knuth, The Art of Computer Programming, 1968
+//
+// Definitions can appear anywhere; they are collected, removed from the body,
+// and rendered as an ordered list at the bottom with back-links.
+func processReferences(content string) string {
+	// Quick bail-out: if there are no [^ markers at all, skip the work.
+	if !strings.Contains(content, "[^") {
+		return content
+	}
+
+	// Stash inline backtick code so [^N] inside `code` is not converted.
+	var codeStash []string
+	content = inlineCodeRe.ReplaceAllStringFunc(content, func(m string) string {
+		codeStash = append(codeStash, m)
+		return placeholder("REFCODE", len(codeStash)-1)
+	})
+
+	// Protect <pre> blocks (fenced code already converted by convertFences).
+	content = protectPreBlocks(content, func(s string) string {
+		// 1. Extract reference definitions.
+		defs := map[int]string{}
+		var order []int
+		s = referenceDefRe.ReplaceAllStringFunc(s, func(m string) string {
+			sub := referenceDefRe.FindStringSubmatch(m)
+			n := atoiSimple(sub[1])
+			if _, exists := defs[n]; !exists {
+				order = append(order, n)
+			}
+			defs[n] = sub[2]
+			return "" // remove definition line
+		})
+
+		if len(defs) == 0 {
+			return s
+		}
+
+		// 2. Replace [^N] with superscript links.
+		citeCounts := map[string]int{}
+		s = referenceCiteRe.ReplaceAllStringFunc(s, func(m string) string {
+			sub := referenceCiteRe.FindStringSubmatch(m)
+			num := sub[1]
+			citeCounts[num]++
+			idAttr := ""
+			if citeCounts[num] == 1 {
+				idAttr = ` id="gw-cite-` + num + `"`
+			}
+			return `<sup><a href="#gw-ref-` + num + `"` + idAttr +
+				` style="color:#3b82f6;text-decoration:none">[` + num + `]</a></sup>`
+		})
+
+		// 3. Build reference section HTML.
+		sort.Ints(order)
+		var sb strings.Builder
+		sb.WriteString("\n\n<section class=\"gowiki-references\" style=\"margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb\">\n")
+		sb.WriteString("<h4 id=\"references\" style=\"font-size:1.1rem;font-weight:600;margin-bottom:0.5rem\">References</h4>\n")
+		sb.WriteString("<ol style=\"list-style-type:decimal;padding-left:1.5rem;font-size:0.9em;line-height:1.6\">\n")
+		for _, n := range order {
+			ns := itoa(n)
+			sb.WriteString(fmt.Sprintf(
+				"<li id=\"gw-ref-%s\" style=\"margin-bottom:0.25rem\"><a href=\"#gw-cite-%s\" style=\"color:#3b82f6;text-decoration:none;margin-right:0.25rem\" title=\"Back to text\">↩</a>%s</li>\n",
+				ns, ns, defs[n],
+			))
+		}
+		sb.WriteString("</ol>\n</section>\n")
+		return s + sb.String()
+	})
+
+	// Restore inline code.
+	for i, m := range codeStash {
+		content = strings.ReplaceAll(content, placeholder("REFCODE", i), m)
+	}
+	return content
+}
+
+// atoiSimple converts a decimal string to int (no error handling — caller
+// guarantees digits via regex).
+func atoiSimple(s string) int {
+	n := 0
+	for _, c := range s {
+		n = n*10 + int(c-'0')
+	}
+	return n
 }
