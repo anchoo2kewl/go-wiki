@@ -45,8 +45,9 @@ var (
 	// normalizeInlinePipeTables
 	rePipeTablePara = regexp.MustCompile(`(?is)<p>([\s\S]*?\|[\s\S]*?)</p>`)
 
-	// convertFences
-	reCodeFence = regexp.MustCompile("(?s)```([a-zA-Z0-9_-]*)\\s*(.*?)```")
+	// convertFences — opening/closing ``` must be at the start of a line
+	// (with up to 3 spaces of indentation per CommonMark spec).
+	reCodeFence = regexp.MustCompile("(?m)^[ ]{0,3}```([a-zA-Z0-9_-]*)[ \\t]*\\n([\\s\\S]*?)^[ ]{0,3}```[ \\t]*$")
 
 	// cleanStyleHeader
 	reCleanStylePreCode = regexp.MustCompile(`^pre\s+code\s*\{[^}]*\}\s*$`)
@@ -128,43 +129,47 @@ func unwrapListLikeContainers(content string) string {
 
 // ensureListSeparation adds a blank line before any list that follows text.
 func ensureListSeparation(content string) string {
-	return reListSeparation.ReplaceAllString(content, "$1\n\n$2$3 ")
+	return protectPreBlocks(content, func(s string) string {
+		return reListSeparation.ReplaceAllString(s, "$1\n\n$2$3 ")
+	})
 }
 
 // preprocessLooseMarkdownHTML converts headings/quotes inside plain HTML containers
 // and adds blank lines after block containers so markdown resumes cleanly.
 func preprocessLooseMarkdownHTML(content string) string {
-	content = reCloseBlock.ReplaceAllString(content, "</$1>\n\n")
+	return protectPreBlocks(content, func(content string) string {
+		content = reCloseBlock.ReplaceAllString(content, "</$1>\n\n")
 
-	content = reTopLevelH3.ReplaceAllString(content, `<h3>$1</h3>`)
-	content = reTopLevelH2.ReplaceAllString(content, `<h2>$1</h2>`)
-	content = reTopLevelH1.ReplaceAllString(content, `<h1>$1</h1>`)
+		content = reTopLevelH3.ReplaceAllString(content, `<h3>$1</h3>`)
+		content = reTopLevelH2.ReplaceAllString(content, `<h2>$1</h2>`)
+		content = reTopLevelH1.ReplaceAllString(content, `<h1>$1</h1>`)
 
-	content = processBlockquotes(content)
+		content = processBlockquotes(content)
 
-	content = reParaH3.ReplaceAllString(content, `<h3>$1</h3>`)
-	content = reParaH2.ReplaceAllString(content, `<h2>$1</h2>`)
-	content = reParaH1.ReplaceAllString(content, `<h1>$1</h1>`)
+		content = reParaH3.ReplaceAllString(content, `<h3>$1</h3>`)
+		content = reParaH2.ReplaceAllString(content, `<h2>$1</h2>`)
+		content = reParaH1.ReplaceAllString(content, `<h1>$1</h1>`)
 
-	content = reParaUL.ReplaceAllString(content, "\n$1$2 $3\n")
-	content = reDivUL.ReplaceAllString(content, "\n$1$2 $3\n")
+		content = reParaUL.ReplaceAllString(content, "\n$1$2 $3\n")
+		content = reDivUL.ReplaceAllString(content, "\n$1$2 $3\n")
 
-	content = reParaOL.ReplaceAllString(content, "\n$1$2. $3\n")
-	content = reDivOL.ReplaceAllString(content, "\n$1$2. $3\n")
+		content = reParaOL.ReplaceAllString(content, "\n$1$2. $3\n")
+		content = reDivOL.ReplaceAllString(content, "\n$1$2. $3\n")
 
-	content = reIndent2UL.ReplaceAllString(content, `    $1`)
-	content = reIndent2OL.ReplaceAllString(content, `    $1`)
+		content = reIndent2UL.ReplaceAllString(content, `    $1`)
+		content = reIndent2OL.ReplaceAllString(content, `    $1`)
 
-	content = reParaEmphasis.ReplaceAllString(content, "\n$1\n")
+		content = reParaEmphasis.ReplaceAllString(content, "\n$1\n")
 
-	content = reTopLevelHR.ReplaceAllString(content, `<hr/>`)
-	content = reParaHR.ReplaceAllString(content, `<hr/>`)
+		content = reTopLevelHR.ReplaceAllString(content, `<hr/>`)
+		content = reParaHR.ReplaceAllString(content, `<hr/>`)
 
-	content = reInnerH3.ReplaceAllString(content, `><h3>$2</h3><`)
-	content = reInnerH2.ReplaceAllString(content, `><h2>$2</h2><`)
-	content = reInnerH1.ReplaceAllString(content, `><h1>$2</h1><`)
+		content = reInnerH3.ReplaceAllString(content, `><h3>$2</h3><`)
+		content = reInnerH2.ReplaceAllString(content, `><h2>$2</h2><`)
+		content = reInnerH1.ReplaceAllString(content, `><h1>$2</h1><`)
 
-	return content
+		return content
+	})
 }
 
 // normalizeInlinePipeTables normalizes inline pipe tables that were collapsed into a single line.

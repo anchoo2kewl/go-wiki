@@ -564,6 +564,81 @@ func TestReferences(t *testing.T) {
 	})
 }
 
+func TestMarkdownHeadingsInsideCodeFences(t *testing.T) {
+	r := NewRenderer(DefaultOptions())
+
+	t.Run("heading inside code fence is not converted to HTML tag", func(t *testing.T) {
+		input := "```\n## Issue: Hardcoded API key\nFile: app.py:15 | Risk: critical\n```"
+		output := r.Render(input)
+
+		// The ## heading should be preserved as literal text inside the code block,
+		// NOT converted to an <h2> tag.
+		if strings.Contains(output, "&lt;h2&gt;") {
+			t.Error("Heading inside code fence was incorrectly converted to <h2> tag and then escaped")
+		}
+		if !strings.Contains(output, "## Issue: Hardcoded API key") {
+			t.Error("Expected literal '## Issue:' text inside code block")
+		}
+		if !strings.Contains(output, "<pre>") {
+			t.Error("Expected <pre> tag for code block")
+		}
+	})
+
+	t.Run("heading outside code fence still renders as HTML", func(t *testing.T) {
+		input := "## Real Heading\n\nSome text."
+		output := r.Render(input)
+
+		if !strings.Contains(output, "<h2") {
+			t.Error("Expected <h2> tag for heading outside code block")
+		}
+	})
+
+	t.Run("mixed code fence and heading", func(t *testing.T) {
+		input := "## Findings\n\nSome text:\n\n```\n## Issue: API key\nFix it.\n```\n\nMore text."
+		output := r.Render(input)
+
+		// The outer heading should be rendered as HTML
+		if !strings.Contains(output, "<h2") {
+			t.Error("Expected <h2> for outer heading")
+		}
+		// The inner heading should be literal text in code block
+		if !strings.Contains(output, "## Issue: API key") {
+			t.Error("Expected literal '## Issue:' inside code block")
+		}
+	})
+
+	t.Run("list markers inside code fence preserved", func(t *testing.T) {
+		input := "```\n- item one\n- item two\n```"
+		output := r.Render(input)
+
+		// List markers should NOT be converted to <ul>/<li>
+		if strings.Contains(output, "<ul") || strings.Contains(output, "<li") {
+			t.Error("List markers inside code fence should not be converted to HTML list")
+		}
+		if !strings.Contains(output, "- item one") {
+			t.Error("Expected literal list marker inside code block")
+		}
+	})
+
+	t.Run("blockquote inside code fence preserved", func(t *testing.T) {
+		input := "```\n> quoted text\n```"
+		output := r.Render(input)
+
+		if strings.Contains(output, "<blockquote") {
+			t.Error("Blockquote inside code fence should not be converted")
+		}
+	})
+
+	t.Run("horizontal rule inside code fence preserved", func(t *testing.T) {
+		input := "```\n---\nsome text\n```"
+		output := r.Render(input)
+
+		if strings.Contains(output, "<hr") {
+			t.Error("HR inside code fence should not be converted")
+		}
+	})
+}
+
 func BenchmarkRender(b *testing.B) {
 	r := NewRenderer(DefaultOptions())
 	input := `# Heading

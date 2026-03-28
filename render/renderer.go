@@ -107,11 +107,16 @@ func (r *Renderer) RenderWithDebug(content string, includeStages bool) (string, 
 	s = replaceMoreTag(s)
 	s = stage("03_more_tag", s)
 
+	// Convert fenced code blocks early so that subsequent preprocessing
+	// steps (heading conversion, list separation, etc.) do not modify
+	// content that is inside ``` fences.
+	s = convertFences(s)
+	s = stage("03b_fences", s)
+
 	s = unwrapListLikeContainers(s)
 	s = ensureListSeparation(s)
 	s = preprocessLooseMarkdownHTML(s)
 	s = normalizeInlinePipeTables(s)
-	s = convertFences(s)
 	if r.Opt.EnableReferences {
 		s = processReferences(s)
 	}
