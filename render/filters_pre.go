@@ -43,7 +43,8 @@ var (
 	reInnerH1      = regexp.MustCompile(`(?is)>(\s*#\s+)(.+?)\s*<`)
 
 	// normalizeInlinePipeTables
-	rePipeTablePara = regexp.MustCompile(`(?is)<p>([\s\S]*?\|[\s\S]*?)</p>`)
+	rePipeTablePara  = regexp.MustCompile(`(?is)<p>([\s\S]*?\|[\s\S]*?)</p>`)
+	rePipeConcat     = regexp.MustCompile(`\|\|`)  // matches "||" — directly concatenated row boundaries
 
 	// convertFences — opening/closing ``` must be at the start of a line
 	// (with up to 3 spaces of indentation per CommonMark spec).
@@ -173,16 +174,25 @@ func preprocessLooseMarkdownHTML(content string) string {
 }
 
 // normalizeInlinePipeTables normalizes inline pipe tables that were collapsed into a single line.
+// Handles both "| |" (space-separated) and "||" (directly concatenated) row boundaries.
 func normalizeInlinePipeTables(content string) string {
 	return protectPreBlocks(content, func(s string) string {
 		s = rePipeTablePara.ReplaceAllStringFunc(s, func(p string) string {
 			if strings.Count(p, "|") >= 8 || strings.Contains(p, "---") {
-				return strings.ReplaceAll(p, "| |", "|\n|")
+				p = strings.ReplaceAll(p, "| |", "|\n|")
+				// Also handle directly concatenated rows: "||" → "|\n|"
+				// This happens when newlines between table rows are stripped.
+				p = rePipeConcat.ReplaceAllString(p, "|\n|")
+				return p
 			}
 			return p
 		})
 		if strings.Count(s, "| |") >= 2 {
 			s = strings.ReplaceAll(s, "| |", "|\n|")
+		}
+		// Also handle globally concatenated "||" when content looks like a table
+		if strings.Count(s, "||") >= 2 && strings.Contains(s, "---") {
+			s = rePipeConcat.ReplaceAllString(s, "|\n|")
 		}
 		return s
 	})
