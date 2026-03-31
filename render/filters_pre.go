@@ -147,15 +147,15 @@ func preprocessLooseMarkdownHTML(content string) string {
 	return protectPreBlocks(content, func(content string) string {
 		content = reCloseBlock.ReplaceAllString(content, "</$1>\n\n")
 
-		content = reTopLevelH3.ReplaceAllString(content, `<h3>$1</h3>`)
-		content = reTopLevelH2.ReplaceAllString(content, `<h2>$1</h2>`)
-		content = reTopLevelH1.ReplaceAllString(content, `<h1>$1</h1>`)
+		// NOTE: Do NOT convert top-level markdown headings (## X) to <h2>X</h2>.
+		// Blackfriday handles ## natively and the HTML tags break its table detection.
+		// Only convert headings trapped inside <p> tags (lines 156-158 below).
 
 		content = processBlockquotes(content)
 
-		content = reParaH3.ReplaceAllString(content, `<h3>$1</h3>`)
-		content = reParaH2.ReplaceAllString(content, `<h2>$1</h2>`)
-		content = reParaH1.ReplaceAllString(content, `<h1>$1</h1>`)
+		// NOTE: Do NOT convert headings inside <p> tags either — blackfriday handles
+		// ## natively, and converting them to <h2> inside <p> creates malformed HTML
+		// that nests tables inside headings.
 
 		content = reParaUL.ReplaceAllString(content, "\n$1$2 $3\n")
 		content = reDivUL.ReplaceAllString(content, "\n$1$2 $3\n")
@@ -171,9 +171,9 @@ func preprocessLooseMarkdownHTML(content string) string {
 		content = reTopLevelHR.ReplaceAllString(content, `<hr/>`)
 		content = reParaHR.ReplaceAllString(content, `<hr/>`)
 
-		content = reInnerH3.ReplaceAllString(content, `><h3>$2</h3><`)
-		content = reInnerH2.ReplaceAllString(content, `><h2>$2</h2><`)
-		content = reInnerH1.ReplaceAllString(content, `><h1>$2</h1><`)
+		// NOTE: reInnerH1/H2/H3 disabled — same reason as above:
+		// blackfriday handles ## natively; converting inside HTML tags
+		// creates malformed nesting (tables inside headings).
 
 		return content
 	})
