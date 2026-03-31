@@ -45,6 +45,12 @@ var (
 	// normalizeInlinePipeTables
 	rePipeTablePara  = regexp.MustCompile(`(?is)<p>([\s\S]*?\|[\s\S]*?)</p>`)
 	rePipeConcat     = regexp.MustCompile(`\|\|`)  // matches "||" — directly concatenated row boundaries
+	// Detects markdown headings glued to preceding text when newlines were stripped.
+	// e.g. "end of row.## Next Section" → "end of row.\n\n## Next Section"
+	reCollapsedHeading = regexp.MustCompile(`([^\n#])(#{1,6}\s+)`)
+	// Detects text (non-pipe char) running directly into a pipe table row start.
+	// e.g. "heading text)| Header | Value |" → split before the first pipe.
+	rePipeTableStart = regexp.MustCompile(`([^\|\n\s])\|(\s*[^\|\-\n][^|]*\|)`) // text)| word |
 
 	// convertFences — opening/closing ``` must be at the start of a line
 	// (with up to 3 spaces of indentation per CommonMark spec).
@@ -174,14 +180,13 @@ func preprocessLooseMarkdownHTML(content string) string {
 }
 
 // normalizeInlinePipeTables normalizes inline pipe tables that were collapsed into a single line.
-// Handles both "| |" (space-separated) and "||" (directly concatenated) row boundaries.
+// Handles "| |" (space-separated), "||" (directly concatenated) row boundaries,
+// and text)| table start (heading/text merging into first table row).
 func normalizeInlinePipeTables(content string) string {
 	return protectPreBlocks(content, func(s string) string {
 		s = rePipeTablePara.ReplaceAllStringFunc(s, func(p string) string {
 			if strings.Count(p, "|") >= 8 || strings.Contains(p, "---") {
 				p = strings.ReplaceAll(p, "| |", "|\n|")
-				// Also handle directly concatenated rows: "||" → "|\n|"
-				// This happens when newlines between table rows are stripped.
 				p = rePipeConcat.ReplaceAllString(p, "|\n|")
 				return p
 			}
@@ -190,12 +195,55 @@ func normalizeInlinePipeTables(content string) string {
 		if strings.Count(s, "| |") >= 2 {
 			s = strings.ReplaceAll(s, "| |", "|\n|")
 		}
-		// Also handle globally concatenated "||" when content looks like a table
+		// Handle collapsed tables (identified by "||" + "---" markers)
 		if strings.Count(s, "||") >= 2 && strings.Contains(s, "---") {
 			s = rePipeConcat.ReplaceAllString(s, "|\n|")
 		}
+		// When content has all newlines stripped, restore structural breaks:
+		// 1. Before markdown headings (## ) that are glued to previous text
+		// 2. Between table rows and non-table text
+		if strings.Contains(s, "|---") || strings.Count(s, "|") >= 6 {
+			// Restore newlines before markdown headings embedded mid-line
+			s = reCollapsedHeading.ReplaceAllString(s, "$1\n\n$2")
+
+			// Fix lines where non-pipe text runs into a table row start
+			lines := strings.Split(s, "\n")
+			for i, line := range lines {
+				if idx := findTableStartInLine(line); idx > 0 {
+					lines[i] = line[:idx] + "\n\n" + line[idx:]
+				}
+			}
+			s = strings.Join(lines, "\n")
+		}
 		return s
 	})
+}
+
+// findTableStartInLine finds the position where a pipe table row starts within a line
+// that begins with non-pipe text. Returns the index of the first pipe, or -1 if not found.
+// e.g. "Heading)| Header | Value |" → index of the first |
+func findTableStartInLine(line string) int {
+	// Must have at least 3 pipes to look like a table row: | h1 | h2 |
+	if strings.Count(line, "|") < 3 {
+		return -1
+	}
+	// Line must NOT start with | (already a table row)
+	trimmed := strings.TrimLeft(line, " \t")
+	if len(trimmed) == 0 || trimmed[0] == '|' {
+		return -1
+	}
+	// Find the first | that starts a table-like pattern: | word | word |
+	for i := 1; i < len(line)-1; i++ {
+		if line[i] == '|' && line[i-1] != '|' && line[i-1] != '\\' {
+			// Check if from this | onward, we have a valid table row pattern
+			rest := line[i:]
+			pipeCount := strings.Count(rest, "|")
+			if pipeCount >= 3 && !strings.HasPrefix(rest, "|---") {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // convertFences converts ```lang fences to <pre><code class="language-...">...</code></pre>.

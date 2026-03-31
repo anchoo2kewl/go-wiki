@@ -115,8 +115,10 @@ func (r *Renderer) RenderWithDebug(content string, includeStages bool) (string, 
 
 	s = unwrapListLikeContainers(s)
 	s = ensureListSeparation(s)
-	s = preprocessLooseMarkdownHTML(s)
+	// Normalize collapsed pipe tables BEFORE heading conversion —
+	// otherwise headings swallow adjacent table rows when newlines are stripped.
 	s = normalizeInlinePipeTables(s)
+	s = preprocessLooseMarkdownHTML(s)
 	if r.Opt.EnableReferences {
 		s = processReferences(s)
 	}
