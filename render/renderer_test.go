@@ -680,3 +680,52 @@ This is a **paragraph** with *emphasis* and [a link](https://example.com).
 		r.Render(input)
 	}
 }
+
+func TestKaTeXPreservation(t *testing.T) {
+	r := NewRenderer(DefaultOptions())
+
+	input := `Some text before.
+
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>X</mi></mrow><annotation encoding="application/x-tex">X</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.07847em;">X</span></span></span></span>
+
+Some text after.`
+
+	output := r.Render(input)
+
+	// The katex span structure must survive rendering
+	if !strings.Contains(output, `class="katex"`) {
+		t.Error("KaTeX class not preserved in output")
+	}
+	if !strings.Contains(output, `class="katex-mathml"`) {
+		t.Error("katex-mathml not preserved")
+	}
+	if !strings.Contains(output, `class="katex-html"`) {
+		t.Error("katex-html not preserved")
+	}
+	if !strings.Contains(output, `<annotation encoding="application/x-tex">X</annotation>`) {
+		t.Error("annotation tag not preserved")
+	}
+	// Raw LaTeX should NOT appear as visible text outside of tags
+	if strings.Contains(output, `application/x-tex">X</annotation></semantics></math></span>`) == false {
+		t.Error("annotation structure was mangled")
+	}
+}
+
+func TestKaTeXDisplayBlock(t *testing.T) {
+	r := NewRenderer(DefaultOptions())
+
+	input := `Before math.
+
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">E = mc^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="mord mathnormal" style="margin-right:0.05764em;">E</span><span class="mrel">=</span><span class="mord mathnormal">m</span><span class="mord"><span class="mord mathnormal">c</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist"><span><span class="mord">2</span></span></span></span></span></span></span></span></span></span></span>
+
+After math.`
+
+	output := r.Render(input)
+
+	if !strings.Contains(output, `class="katex-display"`) {
+		t.Error("katex-display wrapper not preserved")
+	}
+	if !strings.Contains(output, `E = mc^2`) {
+		t.Error("LaTeX annotation content lost")
+	}
+}

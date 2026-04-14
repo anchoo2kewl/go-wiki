@@ -124,9 +124,17 @@ func (r *Renderer) RenderWithDebug(content string, includeStages bool) (string, 
 	}
 	s = stage("04_preprocessed", s)
 
+	// --- PROTECT KaTeX ---
+	s, katexPH := protectKaTeX(s)
+	s = stage("04b_katex_protected", s)
+
 	// --- MARKDOWN ---
 	md := renderMarkdown(s)
 	md = stage("05_markdown", md)
+
+	// --- RESTORE KaTeX ---
+	md = restoreKaTeX(md, katexPH)
+	md = stage("05b_katex_restored", md)
 
 	// --- POST ---
 	if r.Opt.EnableMermaid {
