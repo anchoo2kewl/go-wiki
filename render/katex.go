@@ -7,12 +7,19 @@ import (
 )
 
 // KaTeX/MathML protection: blackfriday's markdown renderer mangles complex
-// <span class="katex"> blocks. We extract them before rendering and restore after.
+// <span class="katex"> blocks and raw LaTeX delimiters ($$...$$ and $...$).
+// We extract them before rendering and restore after.
 
 var (
 	// Match <span class="katex">...</span> blocks (including katex-display).
 	// These are nested, so we use a simple state machine rather than a regex.
 	reKatexStart = regexp.MustCompile(`<span class="katex(?:-display)?">`)
+
+	// Raw LaTeX delimiters — protected so markdown doesn't mangle underscores/backslashes.
+	// Display math: $$...$$ (can span multiple lines)
+	reMathDisplay = regexp.MustCompile(`(?s)\$\$(.+?)\$\$`)
+	// Inline math: $...$ (no spaces at boundaries, not $50 style)
+	reMathInline = regexp.MustCompile(`\$([^\s$][^$]*?[^\s$])\$`)
 )
 
 // katexPlaceholders holds extracted KaTeX blocks keyed by placeholder string.
@@ -20,11 +27,25 @@ type katexPlaceholders struct {
 	blocks []string
 }
 
-// protectKaTeX replaces all <span class="katex">...</span> blocks with
-// placeholders that survive markdown processing.
+// protectKaTeX replaces all <span class="katex">...</span> blocks AND raw
+// LaTeX delimiters ($$...$$ and $...$) with placeholders that survive
+// markdown processing.
 func protectKaTeX(s string) (string, *katexPlaceholders) {
 	kp := &katexPlaceholders{}
 
+	// First: protect raw LaTeX delimiters ($$...$$ then $...$)
+	s = reMathDisplay.ReplaceAllStringFunc(s, func(m string) string {
+		ph := fmt.Sprintf("\n\n<!--KATEX_%d-->\n\n", len(kp.blocks))
+		kp.blocks = append(kp.blocks, m)
+		return ph
+	})
+	s = reMathInline.ReplaceAllStringFunc(s, func(m string) string {
+		ph := fmt.Sprintf("<!--KATEX_%d-->", len(kp.blocks))
+		kp.blocks = append(kp.blocks, m)
+		return ph
+	})
+
+	// Then: protect pre-rendered <span class="katex"> HTML blocks
 	for {
 		loc := reKatexStart.FindStringIndex(s)
 		if loc == nil {

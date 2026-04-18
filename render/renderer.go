@@ -132,10 +132,6 @@ func (r *Renderer) RenderWithDebug(content string, includeStages bool) (string, 
 	md := renderMarkdown(s)
 	md = stage("05_markdown", md)
 
-	// --- RESTORE KaTeX ---
-	md = restoreKaTeX(md, katexPH)
-	md = stage("05b_katex_restored", md)
-
 	// --- POST ---
 	if r.Opt.EnableMermaid {
 		md = transformMermaidBlocks(md)
@@ -168,6 +164,10 @@ func (r *Renderer) RenderWithDebug(content string, includeStages bool) (string, 
 		md = wrapImageGalleries(md)
 		md = stage("12_lightbox", md)
 	}
+
+	// --- RESTORE KaTeX (after all post-processing to avoid re-mangling) ---
+	md = restoreKaTeX(md, katexPH)
+	md = stage("13_katex_restored", md)
 
 	final := md
 	return final, stages
