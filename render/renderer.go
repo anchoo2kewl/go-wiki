@@ -115,6 +115,7 @@ func (r *Renderer) RenderWithDebug(content string, includeStages bool) (string, 
 
 	s = unwrapListLikeContainers(s)
 	s = ensureListSeparation(s)
+	s = normalizeListContinuationIndent(s)
 	// Normalize collapsed pipe tables BEFORE heading conversion —
 	// otherwise headings swallow adjacent table rows when newlines are stripped.
 	s = normalizeInlinePipeTables(s)
@@ -128,11 +129,16 @@ func (r *Renderer) RenderWithDebug(content string, includeStages bool) (string, 
 	s, katexPH := protectKaTeX(s)
 	s = stage("04b_katex_protected", s)
 
+	s = escapeSpacedLinkParens(s)
+
 	// --- MARKDOWN ---
 	md := renderMarkdown(s)
 	md = stage("05_markdown", md)
 
 	// --- POST ---
+	md = unescapeTableCodePipes(md)
+	md = stage("05b_table_code_pipes", md)
+
 	if r.Opt.EnableMermaid {
 		md = transformMermaidBlocks(md)
 		md = stage("06_mermaid", md)

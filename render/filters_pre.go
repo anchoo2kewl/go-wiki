@@ -3,8 +3,9 @@ package render
 import (
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
+
+	"github.com/russross/blackfriday/v2"
 )
 
 // Package-level compiled regexps (compiled once at startup).
@@ -14,9 +15,15 @@ var (
 	reStripTokenCSS   = regexp.MustCompile(`(?m)^\s*\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\s*\{[^}]*\}\s*$`)
 
 	// unwrapListLikeContainers
-	reUnwrapListDiv       = regexp.MustCompile(`(?is)<div\b[^>]*>\s*([\-\*\+]\s*|\d+\.\s*)([\s\S]*?)</div>`)
-	reUnwrapListP         = regexp.MustCompile(`(?is)<p\b[^>]*>\s*([\-\*\+]\s*|\d+\.\s*)([\s\S]*?)</p>`)
+	reUnwrapListDiv        = regexp.MustCompile(`(?is)<div\b[^>]*>\s*([\-\*\+]\s*|\d+\.\s*)([\s\S]*?)</div>`)
+	reUnwrapListP          = regexp.MustCompile(`(?is)<p\b[^>]*>\s*([\-\*\+]\s*|\d+\.\s*)([\s\S]*?)</p>`)
 	reMergeConsecutiveList = regexp.MustCompile(`(?m)\n([-\*\+] |\d+\. ).+\n(?:(?:[-\*\+] |\d+\. ).+\n)+`)
+
+	// escapeSpacedLinkParens: "]" then whitespace then "(".
+	reSpacedLinkParen = regexp.MustCompile(`\][ \t]+\(`)
+
+	// normalizeListContinuationIndent: a top-level list item marker.
+	reListItemStart = regexp.MustCompile(`^(?:[-*+]|\d+[.)])[ \t]`)
 
 	// ensureListSeparation
 	reListSeparation = regexp.MustCompile(`(?m)([^\n])\n([ \t]*)([-*+]|\d+\.)\s+`)
@@ -43,8 +50,12 @@ var (
 	reInnerH1      = regexp.MustCompile(`(?is)>(\s*#\s+)(.+?)\s*<`)
 
 	// normalizeInlinePipeTables
-	rePipeTablePara  = regexp.MustCompile(`(?is)<p>([\s\S]*?\|[\s\S]*?)</p>`)
-	rePipeConcat     = regexp.MustCompile(`\|\|`)  // matches "||" — directly concatenated row boundaries
+	rePipeTablePara = regexp.MustCompile(`(?is)<p>([\s\S]*?\|[\s\S]*?)</p>`)
+	rePipeConcat    = regexp.MustCompile(`\|\|`) // matches "||" — directly concatenated row boundaries
+	// A delimiter cell: | --- |, |:--|, |---:| (GFM needs at least one dash).
+	rePipeDelimCell = regexp.MustCompile(`\|[ \t]*:?-{3,}:?[ \t]*\|`)
+	// A whole delimiter row on its own: | --- | :-: | ---: |
+	rePipeDelimRow = regexp.MustCompile(`^\|?(?:[ \t]*:?-+:?[ \t]*\|)+(?:[ \t]*:?-+:?[ \t]*)?$`)
 	// Detects markdown headings glued to preceding text when newlines were stripped.
 	// e.g. "end of row.## Next Section" → "end of row.\n\n## Next Section"
 	reCollapsedHeading = regexp.MustCompile(`([^\n#])(#{1,6}\s+)`)
@@ -60,10 +71,11 @@ var (
 	reCleanStylePreCode = regexp.MustCompile(`^pre\s+code\s*\{[^}]*\}\s*$`)
 
 	// references
-	referenceDefRe  = regexp.MustCompile(`(?m)^\[\^(\d+)\]:\s+(.+)$`)
-	referenceCiteRe = regexp.MustCompile(`\[\^(\d+)\]`)
+	// Labels follow GFM: letters, digits, "-" and "_" ([^1], [^usc102], [^epc-54]).
+	referenceDefRe  = regexp.MustCompile(`(?m)^[ ]{0,3}\[\^([A-Za-z0-9_-]+)\]:[ \t]+(.+)$`)
+	referenceCiteRe = regexp.MustCompile(`\[\^([A-Za-z0-9_-]+)\]`)
 	inlineCodeRe    = regexp.MustCompile("`[^`]+`")
-	mdLinkRe        = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+	referenceLinkRe = regexp.MustCompile(`(<a href="[^"]*")`)
 )
 
 // normalizeWhitespaceAndBreaks converts NBSP, line breaks, <br> tags to \n.
@@ -141,6 +153,56 @@ func ensureListSeparation(content string) string {
 	})
 }
 
+// normalizeListContinuationIndent re-indents list-item continuation content
+// written with the CommonMark indent (2 spaces after "- ", 3 after "1. ") to
+// the 4 spaces blackfriday needs. Without it a paragraph or table that
+// follows a blank line inside a list item falls out of the list, and a table
+// there renders as plain text.
+func normalizeListContinuationIndent(content string) string {
+	return protectPreBlocks(content, func(s string) string {
+		lines := strings.Split(s, "\n")
+		inList := false
+		for i, line := range lines {
+			trimmed := strings.TrimLeft(line, " ")
+			indent := len(line) - len(trimmed)
+			switch {
+			case trimmed == "", strings.HasPrefix(trimmed, "\t"):
+				continue
+			case indent == 0:
+				inList = reListItemStart.MatchString(line)
+			case inList && indent < 4:
+				lines[i] = "    " + trimmed
+			}
+		}
+		return strings.Join(lines, "\n")
+	})
+}
+
+// escapeSpacedLinkParens stops "[text] (aside)" from becoming a link.
+// blackfriday accepts whitespace between "]" and "(", so "Gary [surname] (CTO)"
+// rendered "surname" as a link to "CTO" and dropped "(CTO)". CommonMark and GFM
+// only form a link when "(" follows "]" directly; escaping the "(" restores
+// that. Inline code and <pre> blocks are left untouched.
+func escapeSpacedLinkParens(content string) string {
+	if !reSpacedLinkParen.MatchString(content) {
+		return content
+	}
+	return protectPreBlocks(content, func(s string) string {
+		var codeStash []string
+		s = inlineCodeRe.ReplaceAllStringFunc(s, func(m string) string {
+			codeStash = append(codeStash, m)
+			return placeholder("LINKCODE", len(codeStash)-1)
+		})
+		s = reSpacedLinkParen.ReplaceAllStringFunc(s, func(m string) string {
+			return m[:len(m)-1] + `\(`
+		})
+		for i, m := range codeStash {
+			s = strings.ReplaceAll(s, placeholder("LINKCODE", i), m)
+		}
+		return s
+	})
+}
+
 // preprocessLooseMarkdownHTML converts headings/quotes inside plain HTML containers
 // and adds blank lines after block containers so markdown resumes cleanly.
 func preprocessLooseMarkdownHTML(content string) string {
@@ -179,44 +241,59 @@ func preprocessLooseMarkdownHTML(content string) string {
 	})
 }
 
-// normalizeInlinePipeTables normalizes inline pipe tables that were collapsed into a single line.
-// Handles "| |" (space-separated), "||" (directly concatenated) row boundaries,
-// and text)| table start (heading/text merging into first table row).
+// normalizeInlinePipeTables repairs pipe tables whose rows were collapsed onto
+// a single line (e.g. by Yjs/CRDT sync or LLM output that stripped newlines).
+// Handles "| |" (space-separated) and "||" (directly concatenated) row
+// boundaries, headings glued to a table, and text)| table starts.
+//
+// Only lines that are actually collapsed are touched: a line must contain a
+// delimiter cell (| --- |) alongside other content. Well-formed GFM tables —
+// one row per line — are left alone, so cells such as "#", "`x`" or an empty
+// first header cell are never mistaken for headings or row boundaries.
 func normalizeInlinePipeTables(content string) string {
 	return protectPreBlocks(content, func(s string) string {
 		s = rePipeTablePara.ReplaceAllStringFunc(s, func(p string) string {
-			if strings.Count(p, "|") >= 8 || strings.Contains(p, "---") {
-				p = strings.ReplaceAll(p, "| |", "|\n|")
-				p = rePipeConcat.ReplaceAllString(p, "|\n|")
+			if !isCollapsedTableLine(p) {
 				return p
 			}
-			return p
+			return splitCollapsedRows(p)
 		})
-		if strings.Count(s, "| |") >= 2 {
-			s = strings.ReplaceAll(s, "| |", "|\n|")
-		}
-		// Handle collapsed tables (identified by "||" + "---" markers)
-		if strings.Count(s, "||") >= 2 && strings.Contains(s, "---") {
-			s = rePipeConcat.ReplaceAllString(s, "|\n|")
-		}
-		// When content has all newlines stripped, restore structural breaks:
-		// 1. Before markdown headings (## ) that are glued to previous text
-		// 2. Between table rows and non-table text
-		if strings.Contains(s, "|---") || strings.Count(s, "|") >= 6 {
-			// Restore newlines before markdown headings embedded mid-line
-			s = reCollapsedHeading.ReplaceAllString(s, "$1\n\n$2")
 
-			// Fix lines where non-pipe text runs into a table row start
-			lines := strings.Split(s, "\n")
-			for i, line := range lines {
-				if idx := findTableStartInLine(line); idx > 0 {
-					lines[i] = line[:idx] + "\n\n" + line[idx:]
+		lines := strings.Split(s, "\n")
+		for i, line := range lines {
+			if !isCollapsedTableLine(line) {
+				continue
+			}
+			line = splitCollapsedRows(line)
+			// Restore newlines before markdown headings glued to a row.
+			line = reCollapsedHeading.ReplaceAllString(line, "$1\n\n$2")
+			// Split text that runs directly into a table row start.
+			parts := strings.Split(line, "\n")
+			for j, part := range parts {
+				if idx := findTableStartInLine(part); idx > 0 {
+					parts[j] = part[:idx] + "\n\n" + part[idx:]
 				}
 			}
-			s = strings.Join(lines, "\n")
+			lines[i] = strings.Join(parts, "\n")
 		}
-		return s
+		return strings.Join(lines, "\n")
 	})
+}
+
+// splitCollapsedRows puts each row of a collapsed table back on its own line.
+func splitCollapsedRows(s string) string {
+	s = strings.ReplaceAll(s, "| |", "|\n|")
+	return rePipeConcat.ReplaceAllString(s, "|\n|")
+}
+
+// isCollapsedTableLine reports whether a single line holds more than one
+// table row: it has a delimiter cell (| --- |, |:---:|) and is not itself
+// just a delimiter row.
+func isCollapsedTableLine(line string) bool {
+	if !rePipeDelimCell.MatchString(line) {
+		return false
+	}
+	return !rePipeDelimRow.MatchString(strings.TrimSpace(line))
 }
 
 // findTableStartInLine finds the position where a pipe table row starts within a line
@@ -317,16 +394,19 @@ func processBlockquotes(content string) string {
 	return strings.Join(out, "\n")
 }
 
-// processReferences converts [^N] inline citations to superscript links and
-// [^N]: text definitions into a reference list appended at the end.
+// processReferences converts [^label] inline citations to superscript links and
+// [^label]: text definitions into a reference list appended at the end.
 //
-// Syntax:
+// Syntax (labels are letters, digits, "-" or "_", as in GFM):
 //
-//	Inline:     [^1]  →  <sup><a href="#gw-ref-1">[1]</a></sup>  (blue, superscript)
-//	Definition: [^1]: Knuth, The Art of Computer Programming, 1968
+//	Inline:     [^usc102]  →  <sup><a href="#gw-ref-usc102">[1]</a></sup>
+//	Definition: [^usc102]: 35 U.S.C. 102
 //
-// Definitions can appear anywhere; they are collected, removed from the body,
-// and rendered as an ordered list at the bottom with back-links.
+// References are numbered in order of first citation, like GFM footnotes, so
+// the displayed number never depends on the label. Definitions can appear
+// anywhere; they are collected, removed from the body, and rendered as an
+// ordered list at the bottom with back-links. Definitions that are never cited
+// are listed after the cited ones; citations with no definition stay literal.
 func processReferences(content string) string {
 	// Quick bail-out: if there are no [^ markers at all, skip the work.
 	if !strings.Contains(content, "[^") {
@@ -339,19 +419,25 @@ func processReferences(content string) string {
 		codeStash = append(codeStash, m)
 		return placeholder("REFCODE", len(codeStash)-1)
 	})
+	restoreCode := func(s string) string {
+		for i, m := range codeStash {
+			s = strings.ReplaceAll(s, placeholder("REFCODE", i), m)
+		}
+		return s
+	}
 
 	// Protect <pre> blocks (fenced code already converted by convertFences).
 	content = protectPreBlocks(content, func(s string) string {
 		// 1. Extract reference definitions.
-		defs := map[int]string{}
-		var order []int
+		defs := map[string]string{}
+		var defOrder []string
 		s = referenceDefRe.ReplaceAllStringFunc(s, func(m string) string {
 			sub := referenceDefRe.FindStringSubmatch(m)
-			n := atoiSimple(sub[1])
-			if _, exists := defs[n]; !exists {
-				order = append(order, n)
+			label := sub[1]
+			if _, exists := defs[label]; !exists {
+				defOrder = append(defOrder, label)
 			}
-			defs[n] = sub[2]
+			defs[label] = sub[2]
 			return "" // remove definition line
 		})
 
@@ -359,52 +445,66 @@ func processReferences(content string) string {
 			return s
 		}
 
-		// 2. Replace [^N] with superscript links.
-		citeCounts := map[string]int{}
+		// 2. Replace [^label] with superscript links, numbering labels in
+		// order of first citation.
+		numbers := map[string]int{}
+		var order []string
 		s = referenceCiteRe.ReplaceAllStringFunc(s, func(m string) string {
-			sub := referenceCiteRe.FindStringSubmatch(m)
-			num := sub[1]
-			citeCounts[num]++
-			idAttr := ""
-			if citeCounts[num] == 1 {
-				idAttr = ` id="gw-cite-` + num + `"`
+			label := referenceCiteRe.FindStringSubmatch(m)[1]
+			if _, ok := defs[label]; !ok {
+				return m // no definition: leave the text as written
 			}
-			return `<sup><a href="#gw-ref-` + num + `"` + idAttr +
-				` style="color:#3b82f6;text-decoration:none">[` + num + `]</a></sup>`
+			idAttr := ""
+			if _, seen := numbers[label]; !seen {
+				order = append(order, label)
+				numbers[label] = len(order)
+				idAttr = ` id="gw-cite-` + label + `"`
+			}
+			return `<sup><a href="#gw-ref-` + label + `"` + idAttr +
+				` style="color:#3b82f6;text-decoration:none">[` + itoa(numbers[label]) + `]</a></sup>`
 		})
+		for _, label := range defOrder {
+			if _, cited := numbers[label]; !cited {
+				order = append(order, label)
+			}
+		}
 
 		// 3. Build reference section HTML.
-		sort.Ints(order)
 		var sb strings.Builder
 		sb.WriteString("\n\n<section class=\"gowiki-references\" style=\"margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb\">\n")
 		sb.WriteString("<h4 id=\"references\" style=\"font-size:1.1rem;font-weight:600;margin-bottom:0.5rem\">References</h4>\n")
 		sb.WriteString("<ol style=\"list-style-type:decimal;padding-left:1.5rem;font-size:0.9em;line-height:1.6\">\n")
-		for _, n := range order {
-			ns := itoa(n)
-			// Convert markdown links [text](url) → <a href="url">text</a> in definition text.
-			defHTML := mdLinkRe.ReplaceAllString(defs[n], `<a href="$2" style="color:#3b82f6" target="_blank" rel="noopener">$1</a>`)
+		for _, label := range order {
+			back := ""
+			if _, cited := numbers[label]; cited {
+				back = fmt.Sprintf(
+					"<a href=\"#gw-cite-%s\" style=\"color:#3b82f6;text-decoration:none;margin-right:0.25rem\" title=\"Back to text\">↩</a>",
+					label,
+				)
+			}
 			sb.WriteString(fmt.Sprintf(
-				"<li id=\"gw-ref-%s\" style=\"margin-bottom:0.25rem\"><a href=\"#gw-cite-%s\" style=\"color:#3b82f6;text-decoration:none;margin-right:0.25rem\" title=\"Back to text\">↩</a>%s</li>\n",
-				ns, ns, defHTML,
+				"<li id=\"gw-ref-%s\" style=\"margin-bottom:0.25rem\">%s%s</li>\n",
+				label, back, renderReferenceText(restoreCode(defs[label])),
 			))
 		}
 		sb.WriteString("</ol>\n</section>\n")
 		return s + sb.String()
 	})
 
-	// Restore inline code.
-	for i, m := range codeStash {
-		content = strings.ReplaceAll(content, placeholder("REFCODE", i), m)
-	}
-	return content
+	return restoreCode(content)
 }
 
-// atoiSimple converts a decimal string to int (no error handling — caller
-// guarantees digits via regex).
-func atoiSimple(s string) int {
-	n := 0
-	for _, c := range s {
-		n = n*10 + int(c-'0')
-	}
-	return n
+// renderReferenceText renders a definition's inline markdown (links, bare
+// URLs, `code`, emphasis). The list sits inside a raw HTML block, which the
+// markdown pass does not look into, so it has to be rendered here.
+func renderReferenceText(text string) string {
+	exts := blackfriday.CommonExtensions | blackfriday.Strikethrough
+	renderer := blackfriday.NewHTMLRenderer(blackfriday.HTMLRendererParameters{
+		Flags: blackfriday.HrefTargetBlank | blackfriday.NoopenerLinks,
+	})
+	out := string(blackfriday.Run([]byte(text), blackfriday.WithExtensions(exts), blackfriday.WithRenderer(renderer)))
+	out = strings.TrimSpace(out)
+	out = strings.TrimPrefix(out, "<p>")
+	out = strings.TrimSuffix(out, "</p>")
+	return referenceLinkRe.ReplaceAllString(out, `$1 style="color:#3b82f6"`)
 }
