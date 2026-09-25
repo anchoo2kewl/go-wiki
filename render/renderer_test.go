@@ -729,3 +729,188 @@ After math.`
 		t.Error("LaTeX annotation content lost")
 	}
 }
+
+func TestGFMTables(t *testing.T) {
+	r := NewRenderer(DefaultOptions())
+
+	firstCells := map[string]string{
+		"hash":       "#",
+		"code":       "`id`",
+		"empty":      "",
+		"backtick":   "`",
+		"hash-label": "# of rows",
+	}
+	for name, cell := range firstCells {
+		t.Run("first header cell "+name, func(t *testing.T) {
+			input := "Intro.\n\n| " + cell + " | Fact | Question |\n| --- | --- | --- |\n| T1 | a | b |\n| T2 | | c |\n"
+			out := r.Render(input)
+			if strings.Count(out, "<table>") != 1 {
+				t.Fatalf("expected one <table>, got:\n%s", out)
+			}
+			if strings.Contains(out, "<h1") {
+				t.Errorf("table cell turned into a heading:\n%s", out)
+			}
+			if strings.Contains(out, "| Fact") {
+				t.Errorf("table row rendered as text:\n%s", out)
+			}
+		})
+	}
+
+	t.Run("several tables with empty cells", func(t *testing.T) {
+		table := "| | A | B |\n| --- | --- | --- |\n| x | | 2 |\n| y | 1 | |\n"
+		out := r.Render(table + "\ntext\n\n" + table)
+		if got := strings.Count(out, "<table>"); got != 2 {
+			t.Fatalf("expected 2 tables, got %d:\n%s", got, out)
+		}
+		if got := strings.Count(out, "<tr>"); got != 6 {
+			t.Errorf("expected 6 rows, got %d:\n%s", got, out)
+		}
+	})
+
+	t.Run("hash in prose next to a table is not a heading", func(t *testing.T) {
+		out := r.Render("C# and issue # 5.\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n")
+		if strings.Contains(out, "<h1") || !strings.Contains(out, "C# and issue # 5.") {
+			t.Errorf("prose was split into a heading:\n%s", out)
+		}
+	})
+
+	t.Run("escaped pipe in code span inside a cell", func(t *testing.T) {
+		out := r.Render("| Op | Meaning |\n| --- | --- |\n| `a \\|\\| b` | or |\n")
+		if !strings.Contains(out, "<code>a || b</code>") {
+			t.Errorf("expected unescaped pipes in code span:\n%s", out)
+		}
+	})
+
+	t.Run("pipes in code outside tables are left alone", func(t *testing.T) {
+		out := r.Render("Sign `a || b || c` here.\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n")
+		if !strings.Contains(out, "<code>a || b || c</code>") {
+			t.Errorf("code span was split:\n%s", out)
+		}
+	})
+
+	t.Run("table inside a list item", func(t *testing.T) {
+		out := r.Render("- **Decision table**:\n\n  | State | Verdict |\n  | --- | --- |\n  | ok | yes |\n\n  After the table.\n- Next\n")
+		if !strings.Contains(out, "<table>") {
+			t.Fatalf("expected a table inside the list:\n%s", out)
+		}
+		if strings.Index(out, "<table>") > strings.Index(out, "</li>") {
+			t.Errorf("table fell out of the list item:\n%s", out)
+		}
+		if !strings.Contains(out, "<p>After the table.</p></li>") {
+			t.Errorf("continuation paragraph fell out of the list item:\n%s", out)
+		}
+	})
+
+	t.Run("collapsed table is still repaired", func(t *testing.T) {
+		out := r.Render("## Heading| Name | Value ||---|---|| a | 1 || b | 2 |\n")
+		if !strings.Contains(out, "<table>") || !strings.Contains(out, "<h2") {
+			t.Fatalf("expected heading and table:\n%s", out)
+		}
+		if got := strings.Count(out, "<tr>"); got != 3 {
+			t.Errorf("expected 3 rows, got %d:\n%s", got, out)
+		}
+	})
+}
+
+func TestNamedReferences(t *testing.T) {
+	r := NewRenderer(DefaultOptions())
+
+	t.Run("alphanumeric labels render and number by first citation", func(t *testing.T) {
+		input := "Law[^usc102] and treaty[^epc_54] and again[^usc102] and [^a-b].\n\n" +
+			"[^epc_54]: EPC Article 54\n[^usc102]: 35 U.S.C. 102\n[^a-b]: Dashed label\n"
+		out := r.Render(input)
+		if strings.Contains(out, "[^") {
+			t.Fatalf("literal footnote markup left in output:\n%s", out)
+		}
+		for _, want := range []string{
+			`<a href="#gw-ref-usc102" id="gw-cite-usc102" style="color:#3b82f6;text-decoration:none">[1]</a>`,
+			`<a href="#gw-ref-epc_54" id="gw-cite-epc_54" style="color:#3b82f6;text-decoration:none">[2]</a>`,
+			`<a href="#gw-ref-a-b" id="gw-cite-a-b" style="color:#3b82f6;text-decoration:none">[3]</a>`,
+			`<a href="#gw-ref-usc102" style="color:#3b82f6;text-decoration:none">[1]</a>`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("missing %s in:\n%s", want, out)
+			}
+		}
+		// List order follows citation order, not definition order.
+		u, e, d := strings.Index(out, `id="gw-ref-usc102"`), strings.Index(out, `id="gw-ref-epc_54"`), strings.Index(out, `id="gw-ref-a-b"`)
+		if u < 0 || e < 0 || d < 0 || u > e || e > d {
+			t.Errorf("reference list not in citation order:\n%s", out)
+		}
+	})
+
+	t.Run("numeric and named labels mix", func(t *testing.T) {
+		out := r.Render("A[^1] B[^src] C[^2].\n\n[^1]: one\n[^2]: two\n[^src]: source\n")
+		for _, want := range []string{`gw-ref-1"`, `gw-ref-src"`, `gw-ref-2"`, ">[1]</a>", ">[2]</a>", ">[3]</a>"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("missing %s in:\n%s", want, out)
+			}
+		}
+	})
+
+	t.Run("citation without definition stays literal", func(t *testing.T) {
+		out := r.Render("A[^known] and B[^missing].\n\n[^known]: here\n")
+		if !strings.Contains(out, "[^missing]") {
+			t.Errorf("undefined citation should stay as written:\n%s", out)
+		}
+	})
+
+	t.Run("uncited definition is still listed", func(t *testing.T) {
+		out := r.Render("A[^x].\n\n[^x]: cited\n[^y]: not cited\n")
+		if !strings.Contains(out, `id="gw-ref-y"`) || !strings.Contains(out, "not cited") {
+			t.Errorf("uncited definition missing:\n%s", out)
+		}
+	})
+
+	t.Run("definition inline markdown renders", func(t *testing.T) {
+		out := r.Render("A[^p1].\n\n[^p1]: US123, `code`, **bold**, https://example.com/p and [Doc](https://example.com/d)\n")
+		for _, want := range []string{
+			"<code>code</code>",
+			"<strong>bold</strong>",
+			`<a href="https://example.com/p" style="color:#3b82f6"`,
+			`<a href="https://example.com/d" style="color:#3b82f6"`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("missing %s in:\n%s", want, out)
+			}
+		}
+		if strings.Contains(out, "`code`") {
+			t.Errorf("backticks left in definition:\n%s", out)
+		}
+	})
+
+	t.Run("label inside inline code is not converted", func(t *testing.T) {
+		out := r.Render("Write `[^usc102]` to cite.\n\nCited[^usc102].\n\n[^usc102]: law\n")
+		if !strings.Contains(out, "<code>[^usc102]</code>") {
+			t.Errorf("inline code was converted:\n%s", out)
+		}
+	})
+}
+
+func TestBracketThenParenthesisIsNotALink(t *testing.T) {
+	r := NewRenderer(DefaultOptions())
+	out := r.Render("Gary [surname] (CTO) and [a real link](https://example.com) and `[x] (y)`.\n")
+	if !strings.Contains(out, "Gary [surname] (CTO)") {
+		t.Errorf("bracketed text followed by an aside became a link:\n%s", out)
+	}
+	if !strings.Contains(out, `<a href="https://example.com">a real link</a>`) {
+		t.Errorf("real link broken:\n%s", out)
+	}
+	if !strings.Contains(out, "<code>[x] (y)</code>") {
+		t.Errorf("inline code altered:\n%s", out)
+	}
+}
+
+func TestIntrawordUnderscoresAreNotEmphasis(t *testing.T) {
+	r := NewRenderer(DefaultOptions())
+	out := r.Render("[^c]: see https://example.com/postgres_source_connector_config.html\n\nCite[^c]. Also a_b_c and _real_ and __strong__.\n")
+	if strings.Contains(out, "<em>source</em>") || strings.Contains(out, "<em>b</em>") {
+		t.Errorf("intraword underscores became emphasis:\n%s", out)
+	}
+	if !strings.Contains(out, ">https://example.com/postgres_source_connector_config.html</a>") {
+		t.Errorf("URL text mangled:\n%s", out)
+	}
+	if !strings.Contains(out, "<em>real</em>") || !strings.Contains(out, "<strong>strong</strong>") {
+		t.Errorf("real underscore emphasis lost:\n%s", out)
+	}
+}

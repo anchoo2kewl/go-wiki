@@ -22,24 +22,29 @@ var (
 
 	youtubeEmbedRe = regexp.MustCompile(`(?is)<p>\s*<a[^>]+href="(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([^"&<>\s]+)[^"]*)"[^>]*>[^<]*</a>\s*</p>`)
 
+	tableBlockRe    = regexp.MustCompile(`(?s)<table>.*?</table>`)
+	tableCodeSpanRe = regexp.MustCompile(`(?s)<code>.*?</code>`)
+
 	mermaidBlockRe = regexp.MustCompile(`(?is)<pre><code class="language-mermaid">([\s\S]*?)</code></pre>`)
 
-	emphasisCodeRe       = regexp.MustCompile("(?is)(<pre[\\s\\S]*?</pre>|<code[\\s\\S]*?</code>)")
-	emphasisTextNodeRe   = regexp.MustCompile(">([^<]+)<")
-	emphasisBoldStarRe   = regexp.MustCompile(`\*\*([^*]+)\*\*`)
-	emphasisBoldUnderRe  = regexp.MustCompile(`__([^_]+)__`)
-	emphasisItalicStarRe = regexp.MustCompile(`(^|[^*])\*([^*]+)\*([^*]|$)`)
-	emphasisItalicUnderRe = regexp.MustCompile(`(^|[^_])_([^_]+)_([^_]|$)`)
+	emphasisCodeRe     = regexp.MustCompile("(?is)(<pre[\\s\\S]*?</pre>|<code[\\s\\S]*?</code>)")
+	emphasisTextNodeRe = regexp.MustCompile(">([^<]+)<")
+	emphasisBoldStarRe = regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	// Underscore emphasis must not be intraword (GFM), or snake_case names and
+	// URLs such as postgres_source_connector get italicised.
+	emphasisBoldUnderRe   = regexp.MustCompile(`(^|[^A-Za-z0-9_])__([^_]+)__([^A-Za-z0-9_]|$)`)
+	emphasisItalicStarRe  = regexp.MustCompile(`(^|[^*])\*([^*]+)\*([^*]|$)`)
+	emphasisItalicUnderRe = regexp.MustCompile(`(^|[^A-Za-z0-9_])_([^_]+)_([^A-Za-z0-9_]|$)`)
 
-	galleryContainerRe       = regexp.MustCompile(`(?is)(<div[^>]*class="[^"]*image-gallery[^"]*"[^>]*>)([\s\S]*?)(</div>)`)
-	galleryImgRe             = regexp.MustCompile(`(?is)<img([^>]*?)\s+src="([^"]+)"([^>]*)>`)
-	galleryAltRe             = regexp.MustCompile(`(?i)alt="([^"]*)"`)
+	galleryContainerRe        = regexp.MustCompile(`(?is)(<div[^>]*class="[^"]*image-gallery[^"]*"[^>]*>)([\s\S]*?)(</div>)`)
+	galleryImgRe              = regexp.MustCompile(`(?is)<img([^>]*?)\s+src="([^"]+)"([^>]*)>`)
+	galleryAltRe              = regexp.MustCompile(`(?i)alt="([^"]*)"`)
 	galleryExistingLightboxRe = regexp.MustCompile(`(?is)<a[^>]*data-lightbox[^>]*>\s*<img[^>]*>\s*</a>`)
-	galleryFigureRe          = regexp.MustCompile(`(?is)(<figure[^>]*>)([\s\S]*?)(</figure>)`)
-	galleryCaptionRe         = regexp.MustCompile(`(?is)<figcaption[^>]*>([\s\S]*?)</figcaption>`)
-	galleryHTMLStripRe       = regexp.MustCompile(`<[^>]*>`)
-	galleryImgParaRe         = regexp.MustCompile(`(?is)<p>\s*(<img[^>]+>)\s*</p>`)
-	galleryParaLightboxRe    = regexp.MustCompile(`(?is)<p>\s*<a[^>]*data-lightbox[^>]*>\s*<img[^>]*>\s*</a>\s*</p>`)
+	galleryFigureRe           = regexp.MustCompile(`(?is)(<figure[^>]*>)([\s\S]*?)(</figure>)`)
+	galleryCaptionRe          = regexp.MustCompile(`(?is)<figcaption[^>]*>([\s\S]*?)</figcaption>`)
+	galleryHTMLStripRe        = regexp.MustCompile(`<[^>]*>`)
+	galleryImgParaRe          = regexp.MustCompile(`(?is)<p>\s*(<img[^>]+>)\s*</p>`)
+	galleryParaLightboxRe     = regexp.MustCompile(`(?is)<p>\s*<a[^>]*data-lightbox[^>]*>\s*<img[^>]*>\s*</a>\s*</p>`)
 )
 
 // addListClasses adds CSS classes to UL/OL/LI using the provided ClassConfig.
@@ -105,6 +110,17 @@ func embedYouTube(html string) string {
 	})
 }
 
+// unescapeTableCodePipes turns "\|" back into "|" inside code spans in table
+// cells. GFM requires a pipe in a cell to be escaped even inside backticks,
+// and drops the backslash; blackfriday keeps it.
+func unescapeTableCodePipes(html string) string {
+	return tableBlockRe.ReplaceAllStringFunc(html, func(table string) string {
+		return tableCodeSpanRe.ReplaceAllStringFunc(table, func(code string) string {
+			return strings.ReplaceAll(code, `\|`, "|")
+		})
+	})
+}
+
 // transformMermaidBlocks converts Prism-style mermaid code blocks to <div class="mermaid">.
 func transformMermaidBlocks(html string) string {
 	return mermaidBlockRe.ReplaceAllString(html, `<div class="mermaid">$1</div>`)
@@ -124,7 +140,7 @@ func convertInlineEmphasisInHTML(html string) string {
 			return seg
 		}
 		inner = emphasisBoldStarRe.ReplaceAllString(inner, "<strong>$1</strong>")
-		inner = emphasisBoldUnderRe.ReplaceAllString(inner, "<strong>$1</strong>")
+		inner = emphasisBoldUnderRe.ReplaceAllString(inner, "$1<strong>$2</strong>$3")
 		inner = emphasisItalicStarRe.ReplaceAllString(inner, "$1<em>$2</em>$3")
 		inner = emphasisItalicUnderRe.ReplaceAllString(inner, "$1<em>$2</em>$3")
 		return ">" + inner + "<"
